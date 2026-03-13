@@ -1,0 +1,61 @@
+{
+  "name": "@brainfork/brainfork-openclaw",
+  "version": "2026.2.4",
+  "description": "OpenClaw Brainfork-backed memory plugin",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "openclaw",
+    "brainfork",
+    "memory",
+    "mcp",
+    "rag"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p ./tsconfig.json",
+    "clean": "rm -rf ./dist",
+    "prepack": "npm run clean && npm run build",
+    "test": "vitest run --config ./vitest.config.ts ./index.test.ts"
+  },
+  "dependencies": {
+    "openclaw": "^2026.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.1.26"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "install": {
+      "npmSpec": "@brainfork/brainfork-openclaw",
+      "localPath": "extensions/brainfork-openclaw",
+      "defaultChoice": "npm"
+    }
+  }
+}
