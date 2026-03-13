@@ -1,0 +1,104 @@
+{
+  "id": "brainfork-openclaw",
+  "kind": "memory",
+  "name": "Brainfork Memory",
+  "description": "Brainfork-backed recall, decision capture, and workspace memory sync",
+  "uiHints": {
+    "baseUrl": {
+      "label": "Brainfork Base URL",
+      "placeholder": "https://api.brainfork.is"
+    },
+    "endpoint": {
+      "label": "Brainfork Endpoint",
+      "placeholder": "my-server"
+    },
+    "apiKey": {
+      "label": "Brainfork API Key",
+      "sensitive": true,
+      "placeholder": "bfk_..."
+    },
+    "autoRecall": {
+      "label": "Auto Recall",
+      "help": "Inject a bounded Brainfork memory block before agent runs"
+    },
+    "autoIndex": {
+      "label": "Auto Index",
+      "help": "Sync MEMORY.md and memory/**/*.md on agent end"
+    },
+    "captureDecisions": {
+      "label": "Capture Decisions",
+      "help": "Detect durable decisions from conversations and log them to Brainfork"
+    },
+    "maxResults": {
+      "label": "Max Results",
+      "advanced": true
+    },
+    "similarityThreshold": {
+      "label": "Similarity Threshold",
+      "help": "Minimum similarity score to keep when building auto-recall context",
+      "advanced": true
+    },
+    "maxTokens": {
+      "label": "Max Tokens",
+      "advanced": true
+    },
+    "deleteMode": {
+      "label": "Delete Mode",
+      "help": "How removed local docs should reconcile in Brainfork"
+    },
+    "requestTimeoutMs": {
+      "label": "Request Timeout",
+      "help": "Abort Brainfork MCP requests that exceed this timeout in milliseconds",
+      "advanced": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "baseUrl": {
+        "type": "string"
+      },
+      "endpoint": {
+        "type": "string"
+      },
+      "apiKey": {
+        "type": "string"
+      },
+      "autoRecall": {
+        "type": "boolean"
+      },
+      "autoIndex": {
+        "type": "boolean"
+      },
+      "captureDecisions": {
+        "type": "boolean"
+      },
+      "maxResults": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20
+      },
+      "similarityThreshold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "maxTokens": {
+        "type": "integer",
+        "minimum": 64,
+        "maximum": 4096
+      },
+      "deleteMode": {
+        "type": "string",
+        "enum": ["ignore", "archive", "delete"]
+      },
+      "requestTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 120000
+      }
+    },
+    "required": ["baseUrl", "endpoint", "apiKey"]
+  }
+}
