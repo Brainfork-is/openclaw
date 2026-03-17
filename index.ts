@@ -565,7 +565,7 @@ const brainforkPlugin = {
       {
         name: "brainfork_query",
         label: "Brainfork Query",
-        description: "Best-quality hybrid search: BM25 + vector + reranking.",
+        description: "Best-quality hybrid search: BM25 keyword + vector similarity via Reciprocal Rank Fusion.",
         parameters: {
           type: "object",
           additionalProperties: false,
