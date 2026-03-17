@@ -147,15 +147,38 @@ async function recallBrainfork(
   query: string,
   config: BrainforkPluginConfig,
 ): Promise<SearchResultItem[]> {
-  const response = await client.callToolParsed("rag_query", {
-    query,
-    maxResults: config.maxResults,
-    similarityThreshold: config.similarityThreshold,
-  });
-  const parsed = response.parsedText ?? response.raw;
-  return normalizeRagResults(parsed)
-    .filter((item) => item.score === undefined || item.score >= config.similarityThreshold)
-    .slice(0, config.maxResults);
+  // Use 'query' mode (hybrid BM25 + vector + reranking) for best recall quality.
+  // Falls back to 'rag_query' if 'query' tool is not available on the server.
+  const searchMode = config.searchMode ?? "query";
+  const toolName = searchMode === "query" ? "query" : searchMode === "vsearch" ? "vsearch" : "rag_query";
+
+  try {
+    const response = await client.callToolParsed(toolName, {
+      query,
+      max_results: config.maxResults,
+      ...(toolName === "rag_query" || toolName === "vsearch"
+        ? { similarity_threshold: config.similarityThreshold }
+        : {}),
+    });
+    const parsed = response.parsedText ?? response.raw;
+    return normalizeRagResults(parsed)
+      .filter((item) => item.score === undefined || item.score >= config.similarityThreshold)
+      .slice(0, config.maxResults);
+  } catch {
+    // Fallback: server may not have the new tools yet
+    if (toolName !== "rag_query") {
+      const response = await client.callToolParsed("rag_query", {
+        query,
+        maxResults: config.maxResults,
+        similarityThreshold: config.similarityThreshold,
+      });
+      const parsed = response.parsedText ?? response.raw;
+      return normalizeRagResults(parsed)
+        .filter((item) => item.score === undefined || item.score >= config.similarityThreshold)
+        .slice(0, config.maxResults);
+    }
+    throw arguments[0];
+  }
 }
 
 function buildRecallBlock(results: SearchResultItem[], config: BrainforkPluginConfig): string | null {
@@ -508,6 +531,60 @@ const brainforkPlugin = {
         },
       },
       { name: "brainfork_push_document" },
+    );
+
+    api.registerTool(
+      {
+        name: "brainfork_vsearch",
+        label: "Brainfork Vector Search",
+        description: "Semantic vector search across Brainfork knowledge base.",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            query: { type: "string", description: "Semantic search query" },
+            similarity_threshold: { type: "number", minimum: 0, maximum: 1 },
+            max_results: { type: "integer", minimum: 1, maximum: 20 },
+          },
+          required: ["query"],
+        },
+        async execute(_toolCallId, params) {
+          const raw = params as { query: string; similarity_threshold?: number; max_results?: number };
+          const response = await client.callToolParsed("vsearch", {
+            query: raw.query,
+            similarity_threshold: raw.similarity_threshold ?? config.similarityThreshold,
+            max_results: raw.max_results ?? config.maxResults,
+          });
+          return jsonResult(response.parsedText ?? response.raw);
+        },
+      },
+      { name: "brainfork_vsearch" },
+    );
+
+    api.registerTool(
+      {
+        name: "brainfork_query",
+        label: "Brainfork Query",
+        description: "Best-quality hybrid search: BM25 keyword + vector similarity via Reciprocal Rank Fusion.",
+        parameters: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            query: { type: "string", description: "Search query" },
+            max_results: { type: "integer", minimum: 1, maximum: 20 },
+          },
+          required: ["query"],
+        },
+        async execute(_toolCallId, params) {
+          const raw = params as { query: string; max_results?: number };
+          const response = await client.callToolParsed("query", {
+            query: raw.query,
+            max_results: raw.max_results ?? config.maxResults,
+          });
+          return jsonResult(response.parsedText ?? response.raw);
+        },
+      },
+      { name: "brainfork_query" },
     );
 
     api.registerCli(

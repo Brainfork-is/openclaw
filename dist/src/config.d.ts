@@ -1,5 +1,7 @@
 export declare const DELETE_MODES: readonly ["ignore", "archive", "delete"];
+export declare const SEARCH_MODES: readonly ["search", "vsearch", "query"];
 export type DeleteMode = (typeof DELETE_MODES)[number];
+export type SearchMode = (typeof SEARCH_MODES)[number];
 export type BrainforkPluginConfig = {
     baseUrl: string;
     endpoint: string;
@@ -11,6 +13,7 @@ export type BrainforkPluginConfig = {
     similarityThreshold: number;
     maxTokens: number;
     deleteMode: DeleteMode;
+    searchMode: SearchMode;
     requestTimeoutMs: number;
 };
 export declare const brainforkConfigSchema: {
@@ -63,6 +66,11 @@ export declare const brainforkConfigSchema: {
             label: string;
             help: string;
         };
+        searchMode: {
+            label: string;
+            advanced: boolean;
+            help: string;
+        };
         requestTimeoutMs: {
             label: string;
             advanced: boolean;
@@ -109,6 +117,10 @@ export declare const brainforkConfigSchema: {
             deleteMode: {
                 type: string;
                 enum: ("ignore" | "archive" | "delete")[];
+            };
+            searchMode: {
+                type: string;
+                enum: ("search" | "vsearch" | "query")[];
             };
             requestTimeoutMs: {
                 type: string;
