@@ -1,4 +1,5 @@
 export const DELETE_MODES = ["ignore", "archive", "delete"];
+export const SEARCH_MODES = ["search", "vsearch", "query"];
 const DEFAULT_MAX_RESULTS = 5;
 const DEFAULT_SIMILARITY_THRESHOLD = 0.2;
 const DEFAULT_MAX_TOKENS = 600;
@@ -61,6 +62,16 @@ function readDeleteMode(value) {
     }
     return raw;
 }
+function readSearchMode(value) {
+    const raw = value.searchMode;
+    if (raw === undefined) {
+        return "query";
+    }
+    if (typeof raw !== "string" || !SEARCH_MODES.includes(raw)) {
+        throw new Error(`searchMode must be one of: ${SEARCH_MODES.join(", ")}`);
+    }
+    return raw;
+}
 export const brainforkConfigSchema = {
     parse(value) {
         if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -78,6 +89,7 @@ export const brainforkConfigSchema = {
             "similarityThreshold",
             "maxTokens",
             "deleteMode",
+            "searchMode",
             "requestTimeoutMs",
         ], "brainfork-openclaw config");
         return {
@@ -103,6 +115,7 @@ export const brainforkConfigSchema = {
                 max: 4096,
             }),
             deleteMode: readDeleteMode(raw),
+            searchMode: readSearchMode(raw),
             requestTimeoutMs: readInteger(raw, "requestTimeoutMs", {
                 fallback: DEFAULT_REQUEST_TIMEOUT_MS,
                 min: 1000,
@@ -158,6 +171,11 @@ export const brainforkConfigSchema = {
             label: "Delete Mode",
             help: "Use ignore, archive, or delete for removed local documents",
         },
+        searchMode: {
+            label: "Search Mode",
+            advanced: true,
+            help: "Default search mode for auto-recall: search (BM25), vsearch (vector), or query (hybrid+rerank)",
+        },
         requestTimeoutMs: {
             label: "Request Timeout",
             advanced: true,
@@ -178,6 +196,7 @@ export const brainforkConfigSchema = {
             similarityThreshold: { type: "number", minimum: 0, maximum: 1 },
             maxTokens: { type: "integer", minimum: 64, maximum: 4096 },
             deleteMode: { type: "string", enum: [...DELETE_MODES] },
+            searchMode: { type: "string", enum: [...SEARCH_MODES] },
             requestTimeoutMs: { type: "integer", minimum: 1000, maximum: 120000 },
         },
         required: ["baseUrl", "endpoint", "apiKey"],

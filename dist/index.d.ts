@@ -55,6 +55,11 @@ declare const brainforkPlugin: {
                 label: string;
                 help: string;
             };
+            searchMode: {
+                label: string;
+                advanced: boolean;
+                help: string;
+            };
             requestTimeoutMs: {
                 label: string;
                 advanced: boolean;
@@ -101,6 +106,10 @@ declare const brainforkPlugin: {
                 deleteMode: {
                     type: string;
                     enum: ("ignore" | "archive" | "delete")[];
+                };
+                searchMode: {
+                    type: string;
+                    enum: ("search" | "vsearch" | "query")[];
                 };
                 requestTimeoutMs: {
                     type: string;
