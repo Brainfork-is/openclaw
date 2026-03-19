@@ -145,6 +145,8 @@ describe("brainfork-openclaw plugin registration", () => {
       "brainfork_get_decisions",
       "brainfork_log_decision",
       "brainfork_push_document",
+      "brainfork_vsearch",
+      "brainfork_query",
     ]);
     expect(registeredCli).toContainEqual(["brainfork"]);
     expect(registeredHooks).toContain("before_agent_start");

@@ -46,6 +46,11 @@
       "label": "Delete Mode",
       "help": "How removed local docs should reconcile in Brainfork"
     },
+    "searchMode": {
+      "label": "Search Mode",
+      "help": "Default search mode for auto-recall: search (BM25), vsearch (vector), or query (hybrid+rerank)",
+      "advanced": true
+    },
     "requestTimeoutMs": {
       "label": "Request Timeout",
       "help": "Abort Brainfork MCP requests that exceed this timeout in milliseconds",
@@ -92,6 +97,10 @@
       "deleteMode": {
         "type": "string",
         "enum": ["ignore", "archive", "delete"]
+      },
+      "searchMode": {
+        "type": "string",
+        "enum": ["search", "vsearch", "query"]
       },
       "requestTimeoutMs": {
         "type": "integer",
