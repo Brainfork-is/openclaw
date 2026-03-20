@@ -175,7 +175,35 @@ async function pushDocumentToBrainfork(client, doc) {
     const payload = response.parsedText ?? response.raw;
     return extractRemoteDocumentMetadata(doc, payload);
 }
+/** Generate a fingerprint for a decision to detect duplicates */
+function decisionFingerprint(decision) {
+    const key = `${decision.decisionMade}::${decision.reasoning}`.toLowerCase().replace(/\s+/g, " ").trim();
+    // Simple hash: take first 64 chars of the normalized key
+    return key.slice(0, 128);
+}
+/** Recent decision fingerprints to prevent duplicate logging across concurrent sessions */
+const recentDecisionFingerprints = new Map();
+const DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+function isDuplicateDecision(decision) {
+    const fingerprint = decisionFingerprint(decision);
+    const now = Date.now();
+    // Prune old entries
+    for (const [key, timestamp] of recentDecisionFingerprints) {
+        if (now - timestamp > DEDUP_WINDOW_MS) {
+            recentDecisionFingerprints.delete(key);
+        }
+    }
+    if (recentDecisionFingerprints.has(fingerprint)) {
+        return true;
+    }
+    recentDecisionFingerprints.set(fingerprint, now);
+    return false;
+}
 async function logDecisionWithAutoConfirm(client, decision) {
+    // Skip duplicates within the dedup window
+    if (isDuplicateDecision(decision)) {
+        return { skipped: true, reason: "duplicate" };
+    }
     const baseArgs = {
         title: decision.title,
         context: decision.context,
