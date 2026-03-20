@@ -9,15 +9,30 @@ It gives OpenClaw agents a Brainfork-backed knowledge base with:
 - decision search and decision logging helpers
 - document cleanup via hidden Brainfork `archive_document`
 
-## Install
+## Quick Start
 
-Published package:
+Install the plugin and run the interactive setup:
 
 ```bash
 openclaw plugins install @brainfork/brainfork-openclaw
+openclaw brainfork setup
 ```
 
-Restart OpenClaw after installation.
+The setup command offers two authentication paths:
+
+### 1. Browser Login (recommended)
+
+Opens your browser to Brainfork where you log in, select a server, and the plugin receives tokens automatically. Best for desktops and machines with a browser.
+
+### 2. Manual Setup
+
+Prompts you for your Brainfork API URL, endpoint, and API key. Best for headless servers and CI environments.
+
+After setup, restart OpenClaw:
+
+```bash
+openclaw gateway restart
+```
 
 ## Local Development
 
@@ -32,9 +47,9 @@ openclaw plugins install --link ./extensions/brainfork-openclaw
 
 If you change the plugin code, rebuild before restarting OpenClaw.
 
-## Config
+## Advanced Configuration
 
-Put this under `plugins.entries.brainfork-openclaw.config`:
+You can also configure the plugin manually by editing your `openclaw.json` config directly. Put this under `plugins.entries.brainfork-openclaw.config`:
 
 ```json5
 {
@@ -68,8 +83,9 @@ Notes:
 ## Commands
 
 ```bash
-openclaw brainfork index
-openclaw brainfork status
+openclaw brainfork setup     # Interactive setup (browser OAuth or manual)
+openclaw brainfork index     # Sync workspace memory to Brainfork
+openclaw brainfork status    # Show connectivity and sync state
 ```
 
 ## Agent Tools
@@ -79,3 +95,29 @@ openclaw brainfork status
 - `brainfork_get_decisions`
 - `brainfork_log_decision`
 - `brainfork_push_document`
+- `brainfork_vsearch`
+- `brainfork_query`
+
+## Troubleshooting
+
+### Browser OAuth doesn't open on a headless server
+
+The browser OAuth flow requires a desktop environment. On headless servers (VPS, CI, Docker containers), choose the **Manual setup** path when prompted, or pass your credentials directly in the config.
+
+### Firewall blocking localhost callback
+
+The browser OAuth flow starts a temporary local server to receive the authentication callback. If your firewall blocks incoming connections on random ports, either:
+- Temporarily allow localhost connections on high ports
+- Use the manual setup path instead
+
+### "Brainfork plugin installed but not configured"
+
+This message appears when the plugin loads without valid auth config. Run `openclaw brainfork setup` to configure it.
+
+### Token refresh failures
+
+If your OAuth tokens expire and auto-refresh fails, run `openclaw brainfork setup` again to re-authenticate. The setup flow will overwrite the existing config with fresh tokens.
+
+### Connection timeouts
+
+Increase `requestTimeoutMs` in your config (default: 20000ms, max: 120000ms) if you're on a slow connection or the Brainfork server is distant.

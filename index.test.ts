@@ -61,7 +61,7 @@ describe("brainfork-openclaw package contract", () => {
     expect(packageJson.scripts).toMatchObject({
       build: "tsc -p ./tsconfig.json",
       prepack: "npm run clean && npm run build",
-      test: "vitest run --config ./vitest.config.ts ./index.test.ts",
+      test: "vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts",
     });
     expect(packageJson.dependencies).toMatchObject({
       openclaw: expect.not.stringContaining("workspace:"),

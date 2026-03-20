@@ -32,7 +32,7 @@
     "build": "tsc -p ./tsconfig.json",
     "clean": "rm -rf ./dist",
     "prepack": "npm run clean && npm run build",
-    "test": "vitest run --config ./vitest.config.ts ./index.test.ts"
+    "test": "vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts"
   },
   "dependencies": {
     "openclaw": "^2026.2.4"

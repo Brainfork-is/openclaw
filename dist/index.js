@@ -1,6 +1,7 @@
 import path from "node:path";
 import { brainforkConfigSchema } from "./src/config.js";
 import { detectDurableDecisions } from "./src/decision-capture.js";
+import { registerBrainforkSetupCommand } from "./src/cli-setup.js";
 import { BrainforkMcpClient } from "./src/mcp-client.js";
 import { applyRemovedResult, applyUpsertResult, buildSyncPlan, loadServerState, saveServerState, summarizeSyncState, } from "./src/sync-state.js";
 import { collectWorkspaceDocuments, hashContent, resolveWorkspaceDir, } from "./src/workspace-memory.js";
@@ -260,6 +261,21 @@ const brainforkPlugin = {
     kind: "memory",
     configSchema: brainforkConfigSchema,
     register(api) {
+        // Check if the plugin has valid auth config; if not, log setup guidance and register only the setup CLI
+        const rawConfig = asRecord(api.pluginConfig);
+        const hasApiKey = rawConfig && typeof rawConfig.apiKey === "string" && rawConfig.apiKey.trim().length > 0;
+        const hasEndpoint = rawConfig && typeof rawConfig.endpoint === "string" && rawConfig.endpoint.trim().length > 0;
+        const hasBaseUrl = rawConfig && typeof rawConfig.baseUrl === "string" && rawConfig.baseUrl.trim().length > 0;
+        if (!hasApiKey || !hasEndpoint || !hasBaseUrl) {
+            api.logger.info("[brainfork-openclaw] ℹ️  Brainfork plugin installed but not configured.\n" +
+                "   Run: openclaw brainfork setup");
+            // Register only the setup CLI command so users can configure
+            api.registerCli(({ program }) => {
+                const brainfork = program.command("brainfork").description("Brainfork memory plugin commands");
+                registerBrainforkSetupCommand({ brainfork, logger: api.logger, resolvePath: (p) => api.resolvePath(p) });
+            }, { commands: ["brainfork"] });
+            return;
+        }
         const config = brainforkConfigSchema.parse(api.pluginConfig);
         const client = new BrainforkMcpClient(config, api.logger);
         api.registerTool({
@@ -445,6 +461,7 @@ const brainforkPlugin = {
         api.registerCli(({ program, workspaceDir }) => {
             const rootDir = resolveWorkspaceDir(workspaceDir);
             const brainfork = program.command("brainfork").description("Brainfork memory plugin commands");
+            registerBrainforkSetupCommand({ brainfork, logger: api.logger, resolvePath: (p) => api.resolvePath(p) });
             brainfork
                 .command("index")
                 .description("Sync MEMORY.md and memory/**/*.md to Brainfork")
