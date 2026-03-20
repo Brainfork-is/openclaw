@@ -107,8 +107,10 @@ function sessionResetError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
   return (
-    lower.includes("session") &&
-    (lower.includes("not found") || lower.includes("expired") || lower.includes("invalid"))
+    (lower.includes("session") &&
+      (lower.includes("not found") || lower.includes("expired") || lower.includes("invalid"))) ||
+    lower.includes("server not initialized") ||
+    lower.includes("not initialized")
   );
 }
 

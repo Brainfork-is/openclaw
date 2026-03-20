@@ -75,8 +75,10 @@ function toErrorMessage(status, body, parsed) {
 function sessionResetError(error) {
     const message = error instanceof Error ? error.message : String(error);
     const lower = message.toLowerCase();
-    return (lower.includes("session") &&
-        (lower.includes("not found") || lower.includes("expired") || lower.includes("invalid")));
+    return ((lower.includes("session") &&
+        (lower.includes("not found") || lower.includes("expired") || lower.includes("invalid"))) ||
+        lower.includes("server not initialized") ||
+        lower.includes("not initialized"));
 }
 export class BrainforkMcpClient {
     logger;
