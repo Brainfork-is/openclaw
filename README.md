@@ -1,38 +1,103 @@
 # @brainfork/brainfork-openclaw
 
-Brainfork memory plugin for **OpenClaw**.
+**Give your OpenClaw agents memory that lasts.**
 
-It gives OpenClaw agents a Brainfork-backed knowledge base with:
+Every time your agent restarts, it forgets — your decisions, your architecture choices, your project context. You end up repeating yourself, correcting the same mistakes, re-explaining the same conventions.
 
-- bounded recall before agent runs via Brainfork `rag_query`
-- workspace sync for `MEMORY.md` and `memory/**/*.md`
-- decision search and decision logging helpers
-- document cleanup via hidden Brainfork `archive_document`
+Brainfork fixes that. This plugin connects OpenClaw to [Brainfork](https://brainfork.is), a sovereign memory layer that stores your agent's knowledge externally and recalls the right context before each session starts.
+
+## What You Get
+
+🧠 **Automatic context recall** — relevant memories are injected before every agent run, so your agent picks up where it left off.
+
+🔄 **Workspace sync** — your `MEMORY.md` and `memory/**/*.md` files are automatically pushed to Brainfork, keeping your knowledge base fresh without manual effort.
+
+📋 **Decision logging** — every significant decision your agent makes is captured, tagged, and retrievable. No more "why did we choose Postgres over SQLite?" moments.
+
+🔍 **Hybrid search** — keyword + vector similarity search across your entire knowledge base. Find anything, fast.
+
+📦 **Document management** — push, archive, and organize documents through a clean API.
+
+🔐 **Sovereign by design** — your data lives in a Brainfork server you control. Not locked into any model vendor. Portable, inspectable, yours.
 
 ## Quick Start
 
-Install the plugin and run the interactive setup:
-
 ```bash
+# Install the plugin
 openclaw plugins install @brainfork/brainfork-openclaw
+
+# Run interactive setup
 openclaw brainfork setup
 ```
 
-The setup command offers two authentication paths:
+The setup wizard offers two paths:
 
-### 1. Browser Login (recommended)
+- **Browser login** (recommended) — opens your browser to authenticate with Brainfork. Best for desktops.
+- **Manual setup** — prompts for your API URL, endpoint, and key. Best for headless servers and CI.
 
-Opens your browser to Brainfork where you log in, select a server, and the plugin receives tokens automatically. Best for desktops and machines with a browser.
-
-### 2. Manual Setup
-
-Prompts you for your Brainfork API URL, endpoint, and API key. Best for headless servers and CI environments.
-
-After setup, restart OpenClaw:
+Then restart OpenClaw:
 
 ```bash
 openclaw gateway restart
 ```
+
+That's it. Your agents now have persistent memory.
+
+## How It Works
+
+1. **Before each session**, the plugin queries Brainfork for context relevant to the current task and injects it into the agent's prompt.
+2. **During sessions**, agents can search, fetch, and push documents — and log decisions with full context.
+3. **After sessions**, workspace memory files are synced to Brainfork automatically.
+
+Your agent stops starting from zero. It remembers what matters.
+
+## CLI Commands
+
+```bash
+openclaw brainfork setup     # Interactive setup (browser OAuth or manual)
+openclaw brainfork index     # Sync workspace memory to Brainfork
+openclaw brainfork status    # Check connectivity and sync state
+```
+
+## Agent Tools
+
+Once installed, your agents get access to these tools:
+
+| Tool | What it does |
+|------|-------------|
+| `brainfork_search` | Keyword search across your knowledge base |
+| `brainfork_vsearch` | Semantic vector search for conceptual matches |
+| `brainfork_query` | Hybrid search (BM25 + vector) for best-quality results |
+| `brainfork_fetch` | Retrieve a full document by ID |
+| `brainfork_push_document` | Store new documents in Brainfork |
+| `brainfork_get_decisions` | Search logged decisions |
+| `brainfork_log_decision` | Record a decision with context and reasoning |
+
+## Configuration
+
+The setup wizard handles configuration automatically. For manual configuration, add this to your `openclaw.json` under `plugins.entries.brainfork-openclaw.config`:
+
+```json5
+{
+  baseUrl: "https://api.brainfork.ai",
+  endpoint: "mcp/my-team",
+  apiKey: "${BRAINFORK_API_KEY}",
+  autoRecall: true,        // inject context before sessions
+  autoIndex: true,         // sync workspace memory automatically
+  captureDecisions: true,  // log agent decisions
+  maxResults: 5,
+  similarityThreshold: 0.2,
+  maxTokens: 600,
+  deleteMode: "archive",   // archive | delete | ignore
+  requestTimeoutMs: 20000
+}
+```
+
+**Notes:**
+- `endpoint` — a full MCP URL or a path relative to `baseUrl`
+- `apiKey` — a raw Brainfork key or a full `Bearer ...` / `ApiKey ...` header value
+- `deleteMode` — what happens to remotely synced files when you delete them locally
+- Sync state is stored under `~/.openclaw/memory/brainfork/`
 
 ## Local Development
 
@@ -45,79 +110,24 @@ npm run build
 openclaw plugins install --link ./extensions/brainfork-openclaw
 ```
 
-If you change the plugin code, rebuild before restarting OpenClaw.
-
-## Advanced Configuration
-
-You can also configure the plugin manually by editing your `openclaw.json` config directly. Put this under `plugins.entries.brainfork-openclaw.config`:
-
-```json5
-{
-  baseUrl: "https://api.brainfork.ai",
-  endpoint: "mcp/my-team",
-  apiKey: "${BRAINFORK_API_KEY}",
-  autoRecall: true,
-  autoIndex: true,
-  captureDecisions: true,
-  maxResults: 5,
-  similarityThreshold: 0.2,
-  maxTokens: 600,
-  deleteMode: "archive",
-  requestTimeoutMs: 20000
-}
-```
-
-Notes:
-
-- `endpoint` can be a full MCP URL or a path relative to `baseUrl`.
-- `apiKey` accepts either a raw Brainfork key or a full `Bearer ...` / `ApiKey ...` header value.
-- Sync state is stored under `~/.openclaw/memory/brainfork/`.
-- Removed local files can be ignored, archived remotely, or deleted remotely with `deleteMode`.
-
-## Brainfork Setup
-
-1. Create or open a Brainfork endpoint that exposes the `search`, `fetch`, `rag_query`, `get_decisions`, `log_decision`, `push_document`, and hidden `archive_document` tools.
-2. Create a Brainfork API key for that endpoint.
-3. Add the key to your OpenClaw config or environment.
-
-## Commands
-
-```bash
-openclaw brainfork setup     # Interactive setup (browser OAuth or manual)
-openclaw brainfork index     # Sync workspace memory to Brainfork
-openclaw brainfork status    # Show connectivity and sync state
-```
-
-## Agent Tools
-
-- `brainfork_search`
-- `brainfork_fetch`
-- `brainfork_get_decisions`
-- `brainfork_log_decision`
-- `brainfork_push_document`
-- `brainfork_vsearch`
-- `brainfork_query`
+Rebuild after changes, then restart OpenClaw.
 
 ## Troubleshooting
 
-### Browser OAuth doesn't open on a headless server
+**Browser OAuth doesn't open on a headless server** — choose Manual setup instead, or pass credentials directly in config.
 
-The browser OAuth flow requires a desktop environment. On headless servers (VPS, CI, Docker containers), choose the **Manual setup** path when prompted, or pass your credentials directly in the config.
+**Firewall blocking localhost callback** — the OAuth flow uses a temporary local server. Allow localhost on high ports, or use manual setup.
 
-### Firewall blocking localhost callback
+**"Plugin installed but not configured"** — run `openclaw brainfork setup` to configure authentication.
 
-The browser OAuth flow starts a temporary local server to receive the authentication callback. If your firewall blocks incoming connections on random ports, either:
-- Temporarily allow localhost connections on high ports
-- Use the manual setup path instead
+**Token refresh failures** — re-run `openclaw brainfork setup` to re-authenticate with fresh tokens.
 
-### "Brainfork plugin installed but not configured"
+**Connection timeouts** — increase `requestTimeoutMs` in config (default: 20,000ms, max: 120,000ms).
 
-This message appears when the plugin loads without valid auth config. Run `openclaw brainfork setup` to configure it.
+## Pricing
 
-### Token refresh failures
+Brainfork starts at **€5/month** with a 14-day free trial. Includes 25k requests and 1k indexed documents. [Sign up at brainfork.is](https://brainfork.is).
 
-If your OAuth tokens expire and auto-refresh fails, run `openclaw brainfork setup` again to re-authenticate. The setup flow will overwrite the existing config with fresh tokens.
+## License
 
-### Connection timeouts
-
-Increase `requestTimeoutMs` in your config (default: 20000ms, max: 120000ms) if you're on a slow connection or the Brainfork server is distant.
+MIT
