@@ -38,19 +38,12 @@ function stripInternalMetadata(value) {
         .replace(/\[Inter-session message\][^\n]*/g, "")
         .replace(/OpenClaw runtime context \(internal\):[^\n]*/g, "")
         .replace(/\[Internal task completion event\][^\n]*/g, "")
-        // Strip metadata blocks that end with ``` (greedy) or end of string
         .replace(/Conversation info \(untrusted metadata\):[\s\S]*?```\s*/g, "")
         .replace(/Sender \(untrusted metadata\):[\s\S]*?```\s*/g, "")
-        // Strip ALL fenced code blocks containing JSON (```json { ... } ```)
-        .replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```/g, "")
-        // Strip inline JSON metadata objects (json { "message_id": ... })
-        .replace(/\bjson\s*\{[^}]*(?:"message_id"|"sender_id"|"sender"|"timestamp"|"label")[^}]*\}/g, "")
         .replace(/sourceSession=[^\s]*/g, "")
         .replace(/sourceChannel=[^\s]*/g, "")
         .replace(/sourceTool=[^\s]*/g, "")
         .replace(/\[cron:[^\]]*\]/g, "")
-        // Strip System: [...] prefixed lines with internal exec/cron data
-        .replace(/System:\s*\[[^\]]*\]\s*Exec completed[^\n]*/g, "")
         .replace(/\s+/g, " ")
         .trim();
 }

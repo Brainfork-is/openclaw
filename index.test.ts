@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import plugin from "./index.js";
+import plugin, { extractAgentName } from "./index.js";
 import { brainforkConfigSchema } from "./src/config.js";
 import {
   applyRemovedResult,
@@ -152,6 +152,25 @@ describe("brainfork-openclaw plugin registration", () => {
     expect(registeredHooks).toContain("before_agent_start");
     expect(registeredHooks).toContain("agent_end");
     expect(registeredServices).toContain("brainfork-openclaw");
+  });
+});
+
+describe("extractAgentName", () => {
+  it("extracts agent name from workspace-{name} directories", () => {
+    expect(extractAgentName("/home/agent/.openclaw/workspace-osborn")).toBe("osborn");
+    expect(extractAgentName("/home/agent/.openclaw/workspace-gertrude")).toBe("gertrude");
+    expect(extractAgentName("/home/agent/.openclaw/workspace-neville")).toBe("neville");
+  });
+
+  it("returns undefined for non-workspace directories", () => {
+    expect(extractAgentName("/home/agent/.openclaw")).toBeUndefined();
+    expect(extractAgentName("/tmp/some-dir")).toBeUndefined();
+    expect(extractAgentName("/home/agent/.openclaw/workspace")).toBeUndefined();
+  });
+
+  it("handles trailing slashes gracefully", () => {
+    // path.basename strips trailing slashes on most platforms
+    expect(extractAgentName("/home/agent/.openclaw/workspace-osborn")).toBe("osborn");
   });
 });
 
