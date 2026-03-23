@@ -253,6 +253,6 @@ export const brainforkConfigSchema = {
       searchMode: { type: "string", enum: [...SEARCH_MODES] },
       requestTimeoutMs: { type: "integer", minimum: 1000, maximum: 120000 },
     },
-    required: ["baseUrl", "endpoint", "apiKey"],
+    required: [] as string[],
   },
 };
