@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { brainforkConfigSchema } from "./src/config.js";
 import { detectDurableDecisions } from "./src/decision-capture.js";
@@ -282,6 +284,39 @@ async function syncWorkspaceMemory(client, workspaceDir, config) {
 function printStatusLine(label, value) {
     console.log(`${label}: ${value}`);
 }
+/**
+ * Discover all agent workspace directories that contain memory files.
+ * Scans ~/.openclaw/workspace-* for MEMORY.md or memory/ subdirs.
+ * Always includes the provided workspaceDir if valid, plus any additional
+ * agent workspaces found.
+ */
+async function discoverAgentWorkspaces(providedWorkspaceDir) {
+    const workspaceDirs = new Set();
+    // Add the provided workspace dir if it exists
+    if (providedWorkspaceDir) {
+        workspaceDirs.add(providedWorkspaceDir);
+    }
+    // Scan for agent workspaces under ~/.openclaw/workspace-*/
+    const openclawDir = path.join(os.homedir(), ".openclaw");
+    try {
+        const entries = await fs.readdir(openclawDir, { withFileTypes: true });
+        for (const entry of entries) {
+            if (entry.isDirectory() && entry.name.startsWith("workspace-")) {
+                const wsPath = path.join(openclawDir, entry.name);
+                // Check if this workspace has memory files worth syncing
+                const hasMemoryFile = await fs.access(path.join(wsPath, "MEMORY.md")).then(() => true).catch(() => false);
+                const hasMemoryDir = await fs.access(path.join(wsPath, "memory")).then(() => true).catch(() => false);
+                if (hasMemoryFile || hasMemoryDir) {
+                    workspaceDirs.add(wsPath);
+                }
+            }
+        }
+    }
+    catch {
+        // ~/.openclaw doesn't exist or isn't readable; fall back to provided dir only
+    }
+    return Array.from(workspaceDirs);
+}
 const brainforkPlugin = {
     id: "brainfork-openclaw",
     name: "Brainfork Memory",
@@ -557,13 +592,26 @@ const brainforkPlugin = {
         }
         api.on("agent_end", async (event, ctx) => {
             const workspaceDir = resolveWorkspaceDir(ctx.workspaceDir);
-            if (config.autoIndex && workspaceDir) {
+            if (config.autoIndex) {
                 try {
-                    const summary = await syncWorkspaceMemory(client, workspaceDir, config);
-                    api.logger.info(`[brainfork-openclaw] sync indexed=${summary.indexed} changed=${summary.changed} unchanged=${summary.unchanged} archived=${summary.archived} deleted=${summary.deleted}`);
+                    // Collect all workspace dirs to sync. Start with the provided workspace,
+                    // then discover all agent workspaces under ~/.openclaw/workspace-*/
+                    const workspaceDirs = await discoverAgentWorkspaces(workspaceDir);
+                    for (const wsDir of workspaceDirs) {
+                        try {
+                            const summary = await syncWorkspaceMemory(client, wsDir, config);
+                            const total = summary.indexed + summary.changed;
+                            if (total > 0 || summary.archived > 0 || summary.deleted > 0) {
+                                api.logger.info(`[brainfork-openclaw] sync ${path.basename(wsDir)} indexed=${summary.indexed} changed=${summary.changed} unchanged=${summary.unchanged} archived=${summary.archived} deleted=${summary.deleted}`);
+                            }
+                        }
+                        catch (syncError) {
+                            api.logger.warn(`[brainfork-openclaw] autoIndex failed for ${wsDir}: ${String(syncError)}`);
+                        }
+                    }
                 }
                 catch (error) {
-                    api.logger.warn(`[brainfork-openclaw] autoIndex failed: ${String(error)}`);
+                    api.logger.warn(`[brainfork-openclaw] autoIndex discovery failed: ${String(error)}`);
                 }
             }
             if (!config.captureDecisions || !event.success) {
