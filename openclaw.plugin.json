@@ -108,6 +108,6 @@
         "maximum": 120000
       }
     },
-    "required": ["baseUrl", "endpoint", "apiKey"]
+    "required": []
   }
 }

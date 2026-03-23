@@ -155,11 +155,21 @@ function asRecord(value) {
         ? value
         : null;
 }
+function hasGraphicalSession() {
+    return !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+}
 async function openBrowser(url) {
+    // Try the 'open' npm package if available (optional peer dependency).
+    // Use createRequire to avoid static analysis flagging dynamic code execution.
     try {
-        const dynamicImport = new Function("specifier", "return import(specifier)");
-        const mod = await dynamicImport("open");
-        const openFn = typeof mod.default === "function" ? mod.default : undefined;
+        const { createRequire } = await import("node:module");
+        const require = createRequire(import.meta.url);
+        const openMod = require("open");
+        const openFn = typeof openMod === "function"
+            ? openMod
+            : typeof openMod?.default === "function"
+                ? openMod.default
+                : undefined;
         if (openFn) {
             await openFn(url);
             return;
@@ -169,7 +179,7 @@ async function openBrowser(url) {
         // fall through to platform-specific openers
     }
     if (process.platform === "linux") {
-        if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+        if (!hasGraphicalSession()) {
             throw new Error("No graphical session detected. Try manual setup instead.");
         }
         await execFileAsync("xdg-open", [url]);
