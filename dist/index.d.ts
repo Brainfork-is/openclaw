@@ -1,5 +1,12 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { type BrainforkPluginConfig } from "./src/config.js";
+/**
+ * Extract the agent name from a workspace directory path.
+ * e.g. "/home/agent/.openclaw/workspace-osborn" → "osborn"
+ *      "/home/agent/.openclaw/workspace-gertrude" → "gertrude"
+ * Returns undefined if the directory doesn't follow the workspace-{name} pattern.
+ */
+export declare function extractAgentName(workspaceDir: string): string | undefined;
 declare const brainforkPlugin: {
     id: string;
     name: string;

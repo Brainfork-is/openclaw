@@ -149,6 +149,17 @@ function buildRecallBlock(results, config) {
     lines.push("</brainfork_memories>");
     return lines.length > 2 ? lines.join("\n") : null;
 }
+/**
+ * Extract the agent name from a workspace directory path.
+ * e.g. "/home/agent/.openclaw/workspace-osborn" → "osborn"
+ *      "/home/agent/.openclaw/workspace-gertrude" → "gertrude"
+ * Returns undefined if the directory doesn't follow the workspace-{name} pattern.
+ */
+export function extractAgentName(workspaceDir) {
+    const dirName = path.basename(workspaceDir);
+    const match = dirName.match(/^workspace-(.+)$/);
+    return match?.[1] || undefined;
+}
 function extractRemoteDocumentMetadata(doc, payload) {
     const record = asRecord(payload);
     const nestedDocument = record ? asRecord(record.document) : null;
@@ -161,17 +172,22 @@ function extractRemoteDocumentMetadata(doc, payload) {
             path.basename(doc.relativePath),
     };
 }
-async function pushDocumentToBrainfork(client, doc) {
+async function pushDocumentToBrainfork(client, doc, agentName) {
+    const tags = ["openclaw", "memory"];
+    if (agentName) {
+        tags.push(`agent:${agentName}`);
+    }
     const response = await client.callToolParsed("push_document", {
         externalId: doc.relativePath,
         title: path.basename(doc.relativePath),
         content: doc.content,
         sourcePath: doc.relativePath,
-        tags: ["openclaw", "memory"],
+        tags,
         metadata: {
             source: "openclaw/brainfork-openclaw",
             path: doc.relativePath,
             sha256: doc.sha256,
+            ...(agentName ? { agentName } : {}),
         },
     });
     const payload = response.parsedText ?? response.raw;
@@ -222,6 +238,7 @@ async function logDecisionWithAutoConfirm(client, decision) {
     return response.parsedText ?? response.raw;
 }
 async function syncWorkspaceMemory(client, workspaceDir, config) {
+    const agentName = extractAgentName(workspaceDir);
     const docs = await collectWorkspaceDocuments(workspaceDir);
     let state = await loadServerState(workspaceDir, client.serverKey);
     const plan = buildSyncPlan(docs, state, config.deleteMode);
@@ -241,7 +258,7 @@ async function syncWorkspaceMemory(client, workspaceDir, config) {
                 continue;
             }
             if (action.type === "upsert") {
-                const metadata = await pushDocumentToBrainfork(client, action.doc);
+                const metadata = await pushDocumentToBrainfork(client, action.doc, agentName);
                 state = applyUpsertResult(state, action.doc, metadata);
                 summary.indexed += 1;
                 if (action.reason === "changed" || action.reason === "restored") {
@@ -618,8 +635,13 @@ const brainforkPlugin = {
                 return;
             }
             try {
+                const agentName = workspaceDir ? extractAgentName(workspaceDir) : undefined;
                 const decisions = detectDurableDecisions(event.messages, 3);
                 for (const decision of decisions) {
+                    if (agentName) {
+                        decision.metadata = { ...decision.metadata, agentName };
+                        decision.tags = [...(decision.tags ?? []), `agent:${agentName}`];
+                    }
                     await logDecisionWithAutoConfirm(client, decision);
                 }
                 if (decisions.length > 0) {
