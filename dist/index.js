@@ -334,6 +334,8 @@ async function discoverAgentWorkspaces(providedWorkspaceDir) {
     }
     return Array.from(workspaceDirs);
 }
+/** Module-level flag to prevent duplicate "not configured" log messages during startup */
+let hasLoggedUnconfiguredWarning = false;
 const brainforkPlugin = {
     id: "brainfork-openclaw",
     name: "Brainfork Memory",
@@ -347,8 +349,13 @@ const brainforkPlugin = {
         const hasEndpoint = rawConfig && typeof rawConfig.endpoint === "string" && rawConfig.endpoint.trim().length > 0;
         const hasBaseUrl = rawConfig && typeof rawConfig.baseUrl === "string" && rawConfig.baseUrl.trim().length > 0;
         if (!hasApiKey || !hasEndpoint || !hasBaseUrl) {
-            api.logger.info("[brainfork-openclaw] ℹ️  Brainfork plugin installed but not configured.\n" +
-                "   Run: openclaw brainfork setup");
+            if (!hasLoggedUnconfiguredWarning) {
+                hasLoggedUnconfiguredWarning = true;
+                api.logger.info("[brainfork-openclaw] ℹ️  Brainfork plugin installed but not configured.\n" +
+                    "   To connect to Brainfork, run:\n" +
+                    "     openclaw brainfork setup\n" +
+                    "   Then restart the gateway.");
+            }
             // Register only the setup CLI command so users can configure
             api.registerCli(({ program }) => {
                 const brainfork = program.command("brainfork").description("Brainfork memory plugin commands");
