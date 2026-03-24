@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -265,11 +266,18 @@ async function pushDocumentToBrainfork(
   return extractRemoteDocumentMetadata(doc, payload);
 }
 
-/** Generate a fingerprint for a decision to detect duplicates */
+/** Generate a fingerprint for a decision to detect duplicates.
+ * Normalizes aggressively (strip punctuation, lowercase, collapse whitespace)
+ * and hashes with SHA-256 to catch near-duplicate decisions regardless of minor
+ * wording variations. Note: this map is process-scoped; it is cleared on restart.
+ */
 function decisionFingerprint(decision: { decisionMade: string; reasoning: string }): string {
-  const key = `${decision.decisionMade}::${decision.reasoning}`.toLowerCase().replace(/\s+/g, " ").trim();
-  // Simple hash: take first 64 chars of the normalized key
-  return key.slice(0, 128);
+  const normalized = `${decision.decisionMade}::${decision.reasoning}`
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 32);
 }
 
 /** Recent decision fingerprints to prevent duplicate logging across concurrent sessions */
@@ -395,7 +403,9 @@ async function syncWorkspaceMemory(
         summary.skippedDeletes += 1;
       }
     } catch (error) {
-      summary.failed.push(`${action.type}:${"entry" in action ? action.entry.path : action.doc.relativePath}`);
+      const docId = "entry" in action ? action.entry.path : action.doc.relativePath;
+      const msg = error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200);
+      summary.failed.push(`${action.type}:${docId}:${msg}`);
     }
   }
 

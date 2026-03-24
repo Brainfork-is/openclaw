@@ -12,6 +12,7 @@ const DEFAULT_BASE_URL = "https://api.brainfork.is";
 const OAUTH_CLIENT_ID = "openclaw-brainfork-plugin";
 const OAUTH_SCOPE = "mcp:tools:read mcp:tools:execute mcp:resources:read mcp:prompts:read";
 const DEFAULT_TIMEOUT_MS = 120_000;
+const FETCH_TIMEOUT_MS = 30_000;
 
 type OptionChain = {
   option(flags: string, description: string): OptionChain;
@@ -76,43 +77,50 @@ export async function exchangeOAuthCode(params: {
   redirectUri: string;
   verifier: string;
 }): Promise<TokenResponse> {
-  const response = await fetch(`${normalizeBaseUrl(params.baseUrl)}/oauth/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body: toFormUrlEncoded({
-      grant_type: "authorization_code",
-      code: params.code,
-      redirect_uri: params.redirectUri,
-      client_id: OAUTH_CLIENT_ID,
-      code_verifier: params.verifier,
-    }),
-  });
-
-  const text = await response.text();
-  let payload: Record<string, unknown>;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-  } catch {
-    throw new Error(`Token exchange failed with non-JSON response (${response.status})`);
-  }
+    const response = await fetch(`${normalizeBaseUrl(params.baseUrl)}/oauth/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: toFormUrlEncoded({
+        grant_type: "authorization_code",
+        code: params.code,
+        redirect_uri: params.redirectUri,
+        client_id: OAUTH_CLIENT_ID,
+        code_verifier: params.verifier,
+      }),
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const detail = typeof payload.error_description === "string"
-      ? payload.error_description
-      : typeof payload.error === "string"
-        ? payload.error
-        : response.statusText;
-    throw new Error(`Token exchange failed (${response.status}): ${detail}`);
-  }
+    const text = await response.text();
+    let payload: Record<string, unknown>;
+    try {
+      payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      throw new Error(`Token exchange failed with non-JSON response (${response.status})`);
+    }
 
-  if (typeof payload.access_token !== "string" || !payload.access_token.trim()) {
-    throw new Error("Token exchange succeeded but access_token was missing");
-  }
+    if (!response.ok) {
+      const detail = typeof payload.error_description === "string"
+        ? payload.error_description
+        : typeof payload.error === "string"
+          ? payload.error
+          : response.statusText;
+      throw new Error(`Token exchange failed (${response.status}): ${detail}`);
+    }
 
-  return payload as unknown as TokenResponse;
+    if (typeof payload.access_token !== "string" || !payload.access_token.trim()) {
+      throw new Error("Token exchange succeeded but access_token was missing");
+    }
+
+    return payload as unknown as TokenResponse;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function decodeBase64Url(value: string): string {
@@ -157,19 +165,26 @@ export function detectEndpointFromAccessToken(accessToken: string): string | und
 }
 
 export async function validateManualCredentials(baseUrl: string, apiKey: string): Promise<void> {
-  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/health`, {
-    method: "GET",
-    headers: {
-      Authorization: apiKey.startsWith("Bearer ") || apiKey.startsWith("ApiKey ")
-        ? apiKey
-        : `ApiKey ${apiKey}`,
-      Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${normalizeBaseUrl(baseUrl)}/health`, {
+      method: "GET",
+      headers: {
+        Authorization: apiKey.startsWith("Bearer ") || apiKey.startsWith("ApiKey ")
+          ? apiKey
+          : `ApiKey ${apiKey}`,
+        Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+      },
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`Validation failed (${response.status}): ${body || response.statusText}`);
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Validation failed (${response.status}): ${body || response.statusText}`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -296,7 +311,7 @@ async function runBrowserOAuthSetup(prompts: PromptApi, configPath: string): Pro
   const { verifier, challenge } = generatePkceVerifierChallenge();
   const state = crypto.randomUUID();
   const { server, port, codePromise } = await startOAuthCallbackServer(state, DEFAULT_TIMEOUT_MS);
-  const redirectUri = `http://localhost:${port}/callback`;
+  const redirectUri = `http://127.0.0.1:${port}/callback`;
   const authorizeUrl = buildAuthorizeUrl(baseUrl, redirectUri, state, challenge);
 
   try {

@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+export const MAX_FILE_SIZE = 512 * 1024; // 512 KB
+
 export type WorkspaceDocument = {
   absolutePath: string;
   relativePath: string;
@@ -67,7 +69,29 @@ export async function collectWorkspaceDocuments(workspaceDir: string): Promise<W
 
   const documents: WorkspaceDocument[] = [];
   for (const absolutePath of deduped) {
-    const content = await fs.readFile(absolutePath, "utf-8");
+    let stat: { size: number };
+    try {
+      stat = await fs.stat(absolutePath);
+    } catch {
+      console.warn(`[brainfork-openclaw] workspace-memory: could not stat ${absolutePath}, skipping`);
+      continue;
+    }
+
+    if (stat.size > MAX_FILE_SIZE) {
+      console.warn(
+        `[brainfork-openclaw] workspace-memory: ${absolutePath} exceeds ${MAX_FILE_SIZE} bytes (${stat.size}), skipping`,
+      );
+      continue;
+    }
+
+    let content: string;
+    try {
+      content = await fs.readFile(absolutePath, "utf-8");
+    } catch {
+      console.warn(`[brainfork-openclaw] workspace-memory: could not read ${absolutePath}, skipping`);
+      continue;
+    }
+
     documents.push({
       absolutePath,
       relativePath: toPortableRelativePath(path.relative(resolvedWorkspaceDir, absolutePath)),
@@ -80,6 +104,8 @@ export async function collectWorkspaceDocuments(workspaceDir: string): Promise<W
 }
 
 export function resolveWorkspaceDir(workspaceDir?: string): string | null {
-  const target = workspaceDir?.trim() ? workspaceDir : process.cwd();
-  return target ? path.resolve(target) : null;
+  if (!workspaceDir?.trim()) {
+    return null;
+  }
+  return path.resolve(workspaceDir);
 }

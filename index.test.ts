@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin, { extractAgentName } from "./index.js";
 import { brainforkConfigSchema } from "./src/config.js";
 import {
@@ -62,7 +62,7 @@ describe("brainfork-openclaw package contract", () => {
       build: "tsc -p ./tsconfig.json",
       prepack: "npm run clean && npm run build",
       test: "npm run test:unit && bash scripts/test-harness.sh",
-      "test:unit": "vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts",
+      "test:unit": "vitest run --config ./vitest.config.ts ./index.test.ts ./index-hooks.test.ts ./src/__tests__/*.test.ts",
       "test:install": "bash scripts/test-harness.sh",
     });
     // openclaw must NOT be in production dependencies (it's provided by the host gateway)

@@ -32,7 +32,7 @@
     "build": "tsc -p ./tsconfig.json",
     "clean": "rm -rf ./dist",
     "prepack": "npm run clean && npm run build",
-    "test:unit": "vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts",
+    "test:unit": "vitest run --config ./vitest.config.ts ./index.test.ts ./index-hooks.test.ts ./src/__tests__/*.test.ts",
     "test": "npm run test:unit && bash scripts/test-harness.sh",
     "test:install": "bash scripts/test-harness.sh"
   },

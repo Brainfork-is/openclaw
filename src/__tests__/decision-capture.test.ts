@@ -179,6 +179,28 @@ describe("detectDurableDecisions", () => {
     expect(decisions.length).toBe(1);
   });
 
+  it("captures decisions stated by the user (not just assistant turns)", () => {
+    const messages = [
+      msg("user", "We decided to standardize on PostgreSQL for all new backend services going forward."),
+      msg("assistant", "That makes sense — PostgreSQL has great JSONB support and the team knows it well."),
+    ];
+
+    const decisions = detectDurableDecisions(messages);
+    expect(decisions.length).toBeGreaterThanOrEqual(1);
+    expect(decisions[0].decisionMade).toContain("standardize on PostgreSQL");
+  });
+
+  it("uses next assistant turn as reasoning for user-stated decisions", () => {
+    const messages = [
+      msg("user", "We agreed to adopt shadcn/ui as our component library for all new features."),
+      msg("assistant", "Agreed — shadcn/ui gives us accessible primitives we can customise to match the brand."),
+    ];
+
+    const decisions = detectDurableDecisions(messages);
+    expect(decisions.length).toBeGreaterThanOrEqual(1);
+    expect(decisions[0].reasoning).toContain("accessible primitives");
+  });
+
   it("requires preceding user context (not just system noise)", () => {
     const messages = [
       msg(

@@ -119,19 +119,34 @@ export function resolveSyncStatePath(workspaceDir: string): string {
 
 async function readStateFile(workspaceDir: string): Promise<SyncStateFile> {
   const statePath = resolveSyncStatePath(workspaceDir);
+  let raw: string;
   try {
-    const raw = await fs.readFile(statePath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<SyncStateFile>;
-    if (parsed.version !== 1 || !parsed.servers || typeof parsed.servers !== "object") {
+    raw = await fs.readFile(statePath, "utf-8");
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      // File not found on first run — empty state is correct
       return createEmptyStateFile();
     }
-    return {
-      version: 1,
-      servers: parsed.servers,
-    };
+    // Permission errors and other OS errors: rethrow so callers are aware
+    throw err;
+  }
+
+  let parsed: Partial<SyncStateFile>;
+  try {
+    parsed = JSON.parse(raw) as Partial<SyncStateFile>;
   } catch {
+    // JSON corruption: log a warning and return empty state (graceful degradation)
+    console.warn(`[brainfork-openclaw] sync-state: corrupt JSON at ${statePath}, treating as empty`);
     return createEmptyStateFile();
   }
+
+  if (parsed.version !== 1 || !parsed.servers || typeof parsed.servers !== "object") {
+    return createEmptyStateFile();
+  }
+  return {
+    version: 1,
+    servers: parsed.servers,
+  };
 }
 
 export async function loadServerState(

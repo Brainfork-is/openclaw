@@ -144,50 +144,82 @@ function extractTextFromMessage(message: unknown): ConversationTurn | null {
   return normalized ? { role, text: normalized } : null;
 }
 
+function extractDecisionSentences(
+  text: string,
+): Array<{ sentence: string; cleanSentence: string; dedupeKey: string } | null> {
+  return splitSentences(text).map((sentence) => {
+    const isDirectDecision = DECISION_SENTENCE.test(sentence);
+    const isGoingForwardPolicy = GOING_FORWARD.test(sentence) && POLICY_SIGNAL.test(sentence);
+    if ((!isDirectDecision && !isGoingForwardPolicy) || NON_DURABLE.test(sentence) || sentence.includes("?")) {
+      return null;
+    }
+    if (NARRATION_NOISE.test(sentence) || sentence.length < 30) {
+      return null;
+    }
+    // Skip sentences that narrate immediate actions rather than declaring policy.
+    if (isDirectDecision && ACTION_VERB_AFTER_DECISION.test(sentence)) {
+      return null;
+    }
+    const cleanSentence = stripMarkdown(sentence);
+    const dedupeKey = cleanSentence
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .replace(/^(?:same\b|also\b|again\b|yes\b|yeah\b|right\b)[^a-z]*/i, "")
+      .replace(/^[\s—–-]+/, "")
+      .trim();
+    return { sentence, cleanSentence, dedupeKey };
+  });
+}
+
 export function detectDurableDecisions(messages: unknown[], limit = 3): CapturedDecision[] {
   const turns = messages.map(extractTextFromMessage).filter(Boolean) as ConversationTurn[];
   const decisions: CapturedDecision[] = [];
   const seen = new Set<string>();
   let lastUserText = "";
 
-  for (const turn of turns) {
+  for (let i = 0; i < turns.length; i++) {
+    const turn = turns[i];
+
     if (turn.role === "user") {
       lastUserText = turn.text;
+
+      // Also evaluate user turns for decision language. When the user states a policy
+      // and the assistant merely acknowledges, we still capture it.
+      const cleanedUserText = stripInternalMetadata(turn.text);
+      for (const match of extractDecisionSentences(cleanedUserText)) {
+        if (!match) continue;
+        const { cleanSentence, dedupeKey } = match;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+
+        // Use the next assistant turn's text (if available) as reasoning
+        const nextAssistantTurn = turns.slice(i + 1).find((t) => t.role === "assistant");
+        const reasoning = nextAssistantTurn
+          ? stripMarkdown(clip(nextAssistantTurn.text, 1000))
+          : "Stated by user.";
+
+        const context = cleanedUserText || "Derived from an OpenClaw conversation.";
+        decisions.push({
+          title: buildTitle(cleanSentence),
+          context: clip(context, 400),
+          decisionNeeded: clip(context, 240),
+          decisionMade: clip(cleanSentence, 300),
+          reasoning,
+          tags: ["openclaw", "memory"],
+        });
+
+        if (decisions.length >= limit) {
+          return decisions;
+        }
+      }
       continue;
     }
 
-    for (const sentence of splitSentences(turn.text)) {
-      const isDirectDecision = DECISION_SENTENCE.test(sentence);
-      const isGoingForwardPolicy = GOING_FORWARD.test(sentence) && POLICY_SIGNAL.test(sentence);
-      if ((!isDirectDecision && !isGoingForwardPolicy) || NON_DURABLE.test(sentence) || sentence.includes("?")) {
-        continue;
-      }
-
-      // Skip short narration sentences and noise
-      if (NARRATION_NOISE.test(sentence) || sentence.length < 30) {
-        continue;
-      }
-
-      // Skip sentences that narrate immediate actions rather than declaring policy.
-      // Only apply when the decision verb directly precedes an action verb
-      // (e.g., "decided to check" is narration, but "all PRs must be rebased
-      // instead of using merge commits" is policy that happens to mention actions).
-      if (isDirectDecision && ACTION_VERB_AFTER_DECISION.test(sentence)) {
-        continue;
-      }
-
-      const cleanSentence = stripMarkdown(sentence);
-      // For dedup, extract the decision core by stripping leading filler
-      // ("Same — we decided..." → "we decided...")
-      const dedupeKey = cleanSentence
-        .toLowerCase()
-        .replace(/\s+/g, " ")
-        .replace(/^(?:same\b|also\b|again\b|yes\b|yeah\b|right\b)[^a-z]*/i, "")
-        .replace(/^[\s—–-]+/, "")
-        .trim();
-      if (seen.has(dedupeKey)) {
-        continue;
-      }
+    // Evaluate assistant turns (original behavior)
+    for (const match of extractDecisionSentences(turn.text)) {
+      if (!match) continue;
+      const { cleanSentence, dedupeKey } = match;
+      if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
 
       const reasoning = stripMarkdown(clip(turn.text, 1000));
