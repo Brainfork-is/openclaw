@@ -1,0 +1,84 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Unit Tests + Static Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npx vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts
+
+      - name: Static checks (scanner + manifest + package)
+        run: |
+          TMPDIR=$(mktemp -d)
+          npm pack --pack-destination "$TMPDIR" 2>&1 | tail -3
+          TGZ=$(find "$TMPDIR" -name "*.tgz" | head -1)
+          EXTRACT="$TMPDIR/extract"
+          mkdir -p "$EXTRACT"
+          tar xzf "$TGZ" -C "$EXTRACT"
+
+          FAIL=0
+
+          # Scanner: no file should have both process.env and fetch
+          echo "Checking scanner patterns..."
+          for f in $(find "$EXTRACT" -name "*.js" -not -path "*/node_modules/*"); do
+            has_env=$(grep -l "process\.env" "$f" 2>/dev/null | wc -l)
+            has_fetch=$(grep -lE "\bfetch\b|\bpost\b|http\.request" "$f" 2>/dev/null | wc -l)
+            if [ "$has_env" -gt 0 ] && [ "$has_fetch" -gt 0 ]; then
+              echo "::error file=$(basename $f)::env-harvesting pattern: process.env + fetch in same file"
+              FAIL=1
+            fi
+          done
+
+          # Manifest: configSchema must not require baseUrl/endpoint/apiKey
+          echo "Checking manifest..."
+          M="$EXTRACT/package/openclaw.plugin.json"
+          python3 -c "
+          import json, sys
+          m = json.load(open('$M'))
+          required = m.get('configSchema', {}).get('required', [])
+          for field in ['baseUrl', 'endpoint', 'apiKey']:
+              if field in required:
+                  print(f'::error::configSchema requires {field} — fresh install will crash')
+                  sys.exit(1)
+          " || FAIL=1
+
+          # Package: openclaw must be peerDep only, not in dependencies
+          echo "Checking package.json..."
+          P="$EXTRACT/package/package.json"
+          python3 -c "
+          import json, sys
+          p = json.load(open('$P'))
+          if p.get('dependencies', {}).get('openclaw'):
+              print('::error::openclaw is in dependencies — should be peerDependencies only')
+              sys.exit(1)
+          " || FAIL=1
+
+          rm -rf "$TMPDIR"
+
+          if [ "$FAIL" -eq 0 ]; then
+            echo "✅ All static checks passed"
+          else
+            echo "❌ Static checks failed"
+            exit 1
+          fi
