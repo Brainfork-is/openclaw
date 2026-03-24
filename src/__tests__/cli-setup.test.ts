@@ -6,6 +6,7 @@ import { generatePkceVerifierChallenge } from "openclaw/plugin-sdk";
 import {
   detectEndpointFromAccessToken,
   exchangeOAuthCode,
+  validateEndpoint,
   validateManualCredentials,
   writeBrainforkPluginConfig,
 } from "../cli-setup.js";
@@ -82,6 +83,29 @@ describe("cli setup helpers", () => {
         }),
       }),
     );
+  });
+
+  it("validateEndpoint throws when the server returns a non-OK status", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("Not Found", { status: 404, statusText: "Not Found" }),
+    );
+
+    await expect(
+      validateEndpoint("https://api.brainfork.is", "my-workspace", "bfk_123"),
+    ).rejects.toThrow("Endpoint 'my-workspace' is not accessible (404)");
+  });
+
+  it("validateEndpoint throws when the server returns invalid JSON-RPC", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: "something unexpected" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(
+      validateEndpoint("https://api.brainfork.is", "my-workspace", "bfk_123"),
+    ).rejects.toThrow("did not return a valid JSON-RPC response");
   });
 
   it("exchanges an OAuth code for tokens", async () => {

@@ -6,8 +6,14 @@
  * install-time static scanner flags the combination as a potential
  * credential harvesting pattern.
  */
+import os from "node:os";
+import path from "node:path";
 /** Returns true when a graphical desktop session is detected. */
 export function hasGraphicalSession() {
     return !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+}
+/** Resolve the OpenClaw state directory from env or default. */
+export function resolveOpenClawStateDir() {
+    return process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
 }
 //# sourceMappingURL=env-detect.js.map
