@@ -334,7 +334,16 @@ async function syncWorkspaceMemory(
   config: BrainforkPluginConfig,
 ): Promise<SyncSummary> {
   const agentName = extractAgentName(workspaceDir);
-  const docs = await collectWorkspaceDocuments(workspaceDir);
+  const rawDocs = await collectWorkspaceDocuments(workspaceDir);
+
+  // Prefix relativePath with workspace directory name to prevent collisions.
+  // Without this, all workspaces would share externalId "MEMORY.md" and overwrite each other.
+  const wsPrefix = path.basename(workspaceDir);
+  const docs = rawDocs.map((doc) => ({
+    ...doc,
+    relativePath: `${wsPrefix}/${doc.relativePath}`,
+  }));
+
   let state = await loadServerState(workspaceDir, client.serverKey);
   const plan = buildSyncPlan(docs, state, config.deleteMode);
 
@@ -407,6 +416,9 @@ function printStatusLine(label: string, value: string | number) {
   console.log(`${label}: ${value}`);
 }
 
+/** Guard to prevent the unconfigured message from being logged multiple times. */
+let unconfiguredMessageLogged = false;
+
 /**
  * Discover all agent workspace directories that contain memory files.
  * Scans ~/.openclaw/workspace-* for MEMORY.md or memory/ subdirs.
@@ -458,10 +470,13 @@ const brainforkPlugin = {
     const hasBaseUrl = rawConfig && typeof rawConfig.baseUrl === "string" && rawConfig.baseUrl.trim().length > 0;
 
     if (!hasApiKey || !hasEndpoint || !hasBaseUrl) {
-      api.logger.info(
-        "[brainfork-openclaw] ℹ️  Brainfork plugin installed but not configured.\n" +
-        "   Run: openclaw brainfork setup",
-      );
+      if (!unconfiguredMessageLogged) {
+        unconfiguredMessageLogged = true;
+        api.logger.info(
+          "[brainfork-openclaw] ℹ️  Brainfork plugin installed but not configured.\n" +
+          "   Run: openclaw brainfork setup",
+        );
+      }
       // Register only the setup CLI command so users can configure
       api.registerCli(
         ({ program }) => {

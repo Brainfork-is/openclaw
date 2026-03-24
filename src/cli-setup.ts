@@ -6,11 +6,25 @@ import { promisify } from "node:util";
 import readline from "node:readline/promises";
 import type { Writable } from "node:stream";
 import type { PluginLogger } from "openclaw/plugin-sdk";
-import { generatePkceVerifierChallenge, toFormUrlEncoded } from "openclaw/plugin-sdk";
 import { startOAuthCallbackServer } from "./oauth-callback-server.js";
+import { hasGraphicalSession } from "./env-detect.js";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_BASE_URL = "https://api.brainfork.is";
+
+/** Generate a PKCE code verifier and S256 challenge locally using Node.js crypto. */
+function generatePkceVerifierChallenge(): { verifier: string; challenge: string } {
+  const verifier = crypto.randomBytes(32).toString("base64url");
+  const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+  return { verifier, challenge };
+}
+
+/** URL-encode an object into application/x-www-form-urlencoded format. */
+function toFormUrlEncoded(params: Record<string, string>): string {
+  return Object.entries(params)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+}
 const OAUTH_CLIENT_ID = "openclaw-brainfork-plugin";
 const OAUTH_SCOPE = "mcp:tools:read mcp:tools:execute mcp:resources:read mcp:prompts:read";
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -216,10 +230,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
-}
-
-function hasGraphicalSession(): boolean {
-  return !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
 }
 
 async function openBrowser(url: string): Promise<void> {
