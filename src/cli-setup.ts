@@ -386,7 +386,8 @@ async function runBrowserOAuthSetup(prompts: PromptApi, configPath: string): Pro
   const { verifier, challenge } = generatePkceVerifierChallenge();
   const state = crypto.randomUUID();
   const { server, port, codePromise } = await startOAuthCallbackServer(state, DEFAULT_TIMEOUT_MS);
-  const redirectUri = `http://localhost:${port}/callback`;
+  // TASK-110: Use 127.0.0.1 to match callback server bind address (avoids IPv6 mismatch)
+  const redirectUri = `http://127.0.0.1:${port}/callback`;
   const authorizeUrl = buildAuthorizeUrl(baseUrl, redirectUri, state, challenge);
 
   try {
