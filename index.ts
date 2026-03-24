@@ -407,6 +407,9 @@ function printStatusLine(label: string, value: string | number) {
   console.log(`${label}: ${value}`);
 }
 
+/** Guard to prevent the unconfigured message from being logged multiple times. */
+let unconfiguredMessageLogged = false;
+
 /**
  * Discover all agent workspace directories that contain memory files.
  * Scans ~/.openclaw/workspace-* for MEMORY.md or memory/ subdirs.
@@ -458,10 +461,13 @@ const brainforkPlugin = {
     const hasBaseUrl = rawConfig && typeof rawConfig.baseUrl === "string" && rawConfig.baseUrl.trim().length > 0;
 
     if (!hasApiKey || !hasEndpoint || !hasBaseUrl) {
-      api.logger.info(
-        "[brainfork-openclaw] ℹ️  Brainfork plugin installed but not configured.\n" +
-        "   Run: openclaw brainfork setup",
-      );
+      if (!unconfiguredMessageLogged) {
+        unconfiguredMessageLogged = true;
+        api.logger.info(
+          "[brainfork-openclaw] ℹ️  Brainfork plugin installed but not configured.\n" +
+          "   Run: openclaw brainfork setup",
+        );
+      }
       // Register only the setup CLI command so users can configure
       api.registerCli(
         ({ program }) => {

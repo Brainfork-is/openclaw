@@ -1,6 +1,6 @@
 {
   "name": "@brainfork/brainfork-openclaw",
-  "version": "2026.3.3",
+  "version": "2026.3.4",
   "description": "OpenClaw Brainfork-backed memory plugin",
   "type": "module",
   "license": "MIT",
