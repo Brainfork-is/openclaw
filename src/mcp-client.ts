@@ -175,17 +175,19 @@ export class BrainforkMcpClient {
     };
   }
 
+  // TASK-108: Dispatch to correct tool based on mode
   async cleanupDocument(params: {
     externalId: string;
     sha256?: string;
     remoteId?: string;
     mode: Exclude<DeleteMode, "ignore">;
   }): Promise<{ toolName: string; response: ParsedToolCallResponse }> {
+    const toolName = params.mode === "delete" ? "delete_document" : "archive_document";
     return {
-      toolName: "archive_document",
-      response: await this.callToolParsed("archive_document", {
+      toolName,
+      response: await this.callToolParsed(toolName, {
         externalId: params.externalId,
-        mode: params.mode,
+        ...(params.mode === "archive" ? { mode: params.mode } : {}),
       }),
     };
   }
