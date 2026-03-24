@@ -1,12 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import readline from "node:readline/promises";
 import { generatePkceVerifierChallenge, toFormUrlEncoded } from "openclaw/plugin-sdk";
 import { startOAuthCallbackServer } from "./oauth-callback-server.js";
-const execFileAsync = promisify(execFile);
+import { openBrowser } from "./browser-open.js";
 const DEFAULT_BASE_URL = "https://api.brainfork.is";
 const OAUTH_CLIENT_ID = "openclaw-brainfork-plugin";
 const OAUTH_SCOPE = "mcp:tools:read mcp:tools:execute mcp:resources:read mcp:prompts:read";
@@ -154,46 +152,6 @@ function asRecord(value) {
     return value && typeof value === "object" && !Array.isArray(value)
         ? value
         : null;
-}
-function hasGraphicalSession() {
-    return !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-}
-async function openBrowser(url) {
-    // Try the 'open' npm package if available (optional peer dependency).
-    // Use createRequire to avoid static analysis flagging dynamic code execution.
-    try {
-        const { createRequire } = await import("node:module");
-        const require = createRequire(import.meta.url);
-        const openMod = require("open");
-        const openFn = typeof openMod === "function"
-            ? openMod
-            : typeof openMod?.default === "function"
-                ? openMod.default
-                : undefined;
-        if (openFn) {
-            await openFn(url);
-            return;
-        }
-    }
-    catch {
-        // fall through to platform-specific openers
-    }
-    if (process.platform === "linux") {
-        if (!hasGraphicalSession()) {
-            throw new Error("No graphical session detected. Try manual setup instead.");
-        }
-        await execFileAsync("xdg-open", [url]);
-        return;
-    }
-    if (process.platform === "darwin") {
-        await execFileAsync("open", [url]);
-        return;
-    }
-    if (process.platform === "win32") {
-        await execFileAsync("cmd", ["/c", "start", "", url]);
-        return;
-    }
-    throw new Error("Unable to open a browser on this platform. Try manual setup instead.");
 }
 function createPromptApi() {
     const rl = readline.createInterface({
