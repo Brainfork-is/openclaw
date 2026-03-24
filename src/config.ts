@@ -8,6 +8,8 @@ export type BrainforkPluginConfig = {
   baseUrl: string;
   endpoint: string;
   apiKey: string;
+  refreshToken?: string;
+  tokenExpiresAt?: number;
   autoRecall: boolean;
   autoIndex: boolean;
   captureDecisions: boolean;
@@ -133,6 +135,8 @@ export const brainforkConfigSchema = {
         "baseUrl",
         "endpoint",
         "apiKey",
+        "refreshToken",
+        "tokenExpiresAt",
         "autoRecall",
         "autoIndex",
         "captureDecisions",
@@ -150,6 +154,8 @@ export const brainforkConfigSchema = {
       baseUrl: readRequiredString(raw, "baseUrl", "baseUrl"),
       endpoint: readRequiredString(raw, "endpoint", "endpoint"),
       apiKey: readRequiredString(raw, "apiKey", "apiKey"),
+      refreshToken: typeof raw.refreshToken === "string" && raw.refreshToken.trim() ? raw.refreshToken.trim() : undefined,
+      tokenExpiresAt: typeof raw.tokenExpiresAt === "number" ? raw.tokenExpiresAt : undefined,
       autoRecall: readBoolean(raw, "autoRecall", true),
       autoIndex: readBoolean(raw, "autoIndex", true),
       captureDecisions: readBoolean(raw, "captureDecisions", true),
@@ -193,6 +199,15 @@ export const brainforkConfigSchema = {
       sensitive: true,
       placeholder: "bfk_...",
       help: 'Sent as Authorization. Prefix with "Bearer " if needed.',
+    },
+    refreshToken: {
+      label: "Refresh Token",
+      sensitive: true,
+      help: "OAuth refresh token for automatic access token renewal",
+    },
+    tokenExpiresAt: {
+      label: "Token Expires At",
+      help: "Epoch milliseconds when the access token expires",
     },
     autoRecall: {
       label: "Auto Recall",
@@ -243,6 +258,8 @@ export const brainforkConfigSchema = {
       baseUrl: { type: "string" },
       endpoint: { type: "string" },
       apiKey: { type: "string" },
+      refreshToken: { type: "string" },
+      tokenExpiresAt: { type: "number" },
       autoRecall: { type: "boolean" },
       autoIndex: { type: "boolean" },
       captureDecisions: { type: "boolean" },

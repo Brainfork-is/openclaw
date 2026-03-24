@@ -112,6 +112,18 @@ openclaw plugins install --link ./extensions/brainfork-openclaw
 
 Rebuild after changes, then restart OpenClaw.
 
+Before publishing, run the full local install harness:
+
+```bash
+npm run test:install
+```
+
+For the full test suite (unit tests + install/setup/runtime harness), run:
+
+```bash
+npm test
+```
+
 ## Troubleshooting
 
 **Browser OAuth doesn't open on a headless server** — choose Manual setup instead, or pass credentials directly in config.

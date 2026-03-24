@@ -13,24 +13,30 @@ const OAUTH_CLIENT_ID = "openclaw-brainfork-plugin";
 const OAUTH_SCOPE = "mcp:tools:read mcp:tools:execute mcp:resources:read mcp:prompts:read";
 const DEFAULT_TIMEOUT_MS = 120_000;
 
+type OptionChain = {
+  option(flags: string, description: string): OptionChain;
+  description(text: string): OptionChain;
+  action(fn: (opts: Record<string, string | undefined>) => Promise<void> | void): unknown;
+};
+
 type CommandLike = {
-  command(name: string): {
-    description(text: string): {
-      action(fn: () => Promise<void> | void): unknown;
-    };
-  };
+  command(name: string): OptionChain;
 };
 
 export type BrainforkSetupConfig = {
   baseUrl: string;
   endpoint: string;
   apiKey: string;
+  refreshToken?: string;
+  tokenExpiresAt?: number;
 };
 
 export type BrainforkSetupCommandOptions = {
   brainfork: CommandLike;
   logger: PluginLogger;
-  resolvePath: (input: string) => string;
+  configPath: string;
+  /** @deprecated Use configPath instead */
+  resolvePath?: (input: string) => string;
 };
 
 type PromptApi = {
@@ -200,6 +206,8 @@ export async function writeBrainforkPluginConfig(
             baseUrl: pluginConfig.baseUrl,
             endpoint: pluginConfig.endpoint,
             apiKey: pluginConfig.apiKey,
+            ...(pluginConfig.refreshToken !== undefined ? { refreshToken: pluginConfig.refreshToken } : {}),
+            ...(pluginConfig.tokenExpiresAt !== undefined ? { tokenExpiresAt: pluginConfig.tokenExpiresAt } : {}),
           },
         },
       },
@@ -207,7 +215,9 @@ export async function writeBrainforkPluginConfig(
   };
 
   await fs.mkdir(path.dirname(configPath), { recursive: true });
-  await fs.writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+  const tmpPath = `${configPath}.tmp`;
+  await fs.writeFile(tmpPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+  await fs.rename(tmpPath, configPath);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -319,10 +329,12 @@ async function runBrowserOAuthSetup(prompts: PromptApi, configPath: string): Pro
     throw new Error("Endpoint/server name is required");
   }
 
-  const nextConfig = {
+  const nextConfig: BrainforkSetupConfig = {
     baseUrl,
     endpoint,
     apiKey: tokens.access_token,
+    ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
+    ...(typeof tokens.expires_in === "number" ? { tokenExpiresAt: Date.now() + tokens.expires_in * 1000 } : {}),
   };
   await writeBrainforkPluginConfig(configPath, nextConfig);
   return nextConfig;
@@ -332,10 +344,42 @@ export function registerBrainforkSetupCommand(options: BrainforkSetupCommandOpti
   options.brainfork
     .command("setup")
     .description("Interactively connect this OpenClaw install to Brainfork")
-    .action(async () => {
-      const prompts = createPromptApi();
-      const configPath = options.resolvePath("openclaw.json");
+    .option("--base-url <url>", "Brainfork API URL (non-interactive mode)")
+    .option("--api-key <key>", "Brainfork API key (non-interactive mode)")
+    .option("--endpoint <name>", "Endpoint/server name (non-interactive mode)")
+    .option("--skip-validation", "Skip API key validation against the server")
+    .action(async (cliOpts: Record<string, string | undefined>) => {
+      const configPath = options.configPath;
 
+      // Non-interactive mode: all three required flags are provided
+      if (cliOpts.baseUrl && cliOpts.apiKey && cliOpts.endpoint) {
+        const baseUrl = normalizeBaseUrl(cliOpts.baseUrl);
+        const apiKey = cliOpts.apiKey;
+        const endpoint = cliOpts.endpoint.trim();
+
+        if (!endpoint) {
+          throw new Error("Endpoint/server name is required");
+        }
+
+        if (!cliOpts.skipValidation) {
+          await validateManualCredentials(baseUrl, apiKey);
+        }
+
+        const nextConfig = { baseUrl, endpoint, apiKey };
+        await writeBrainforkPluginConfig(configPath, nextConfig);
+        console.log(`✅ Connected to Brainfork (server: '${nextConfig.endpoint}')`);
+        return;
+      }
+
+      // If some but not all non-interactive flags are set, error out
+      if (cliOpts.baseUrl || cliOpts.apiKey || cliOpts.endpoint) {
+        throw new Error(
+          "Non-interactive setup requires all three flags: --base-url, --api-key, and --endpoint",
+        );
+      }
+
+      // Interactive mode (original flow)
+      const prompts = createPromptApi();
       try {
         const choice = await prompts.ask(
           "How would you like to authenticate? [1] Browser login (recommended) [2] Manual setup",

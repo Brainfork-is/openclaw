@@ -6,6 +6,8 @@ export type BrainforkPluginConfig = {
     baseUrl: string;
     endpoint: string;
     apiKey: string;
+    refreshToken?: string;
+    tokenExpiresAt?: number;
     autoRecall: boolean;
     autoIndex: boolean;
     captureDecisions: boolean;
@@ -33,6 +35,15 @@ export declare const brainforkConfigSchema: {
             label: string;
             sensitive: boolean;
             placeholder: string;
+            help: string;
+        };
+        refreshToken: {
+            label: string;
+            sensitive: boolean;
+            help: string;
+        };
+        tokenExpiresAt: {
+            label: string;
             help: string;
         };
         autoRecall: {
@@ -88,6 +99,12 @@ export declare const brainforkConfigSchema: {
                 type: string;
             };
             apiKey: {
+                type: string;
+            };
+            refreshToken: {
+                type: string;
+            };
+            tokenExpiresAt: {
                 type: string;
             };
             autoRecall: {

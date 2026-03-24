@@ -1,20 +1,25 @@
 import type { PluginLogger } from "openclaw/plugin-sdk";
+type OptionChain = {
+    option(flags: string, description: string): OptionChain;
+    description(text: string): OptionChain;
+    action(fn: (opts: Record<string, string | undefined>) => Promise<void> | void): unknown;
+};
 type CommandLike = {
-    command(name: string): {
-        description(text: string): {
-            action(fn: () => Promise<void> | void): unknown;
-        };
-    };
+    command(name: string): OptionChain;
 };
 export type BrainforkSetupConfig = {
     baseUrl: string;
     endpoint: string;
     apiKey: string;
+    refreshToken?: string;
+    tokenExpiresAt?: number;
 };
 export type BrainforkSetupCommandOptions = {
     brainfork: CommandLike;
     logger: PluginLogger;
-    resolvePath: (input: string) => string;
+    configPath: string;
+    /** @deprecated Use configPath instead */
+    resolvePath?: (input: string) => string;
 };
 type TokenResponse = {
     access_token: string;

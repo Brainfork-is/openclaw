@@ -1,6 +1,9 @@
+import fs from "node:fs/promises";
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 const CLIENT_NAME = "openclaw-brainfork-plugin";
 const CLIENT_VERSION = "1.0.0";
+const OAUTH_CLIENT_ID = "openclaw-brainfork-plugin";
+const TOKEN_EXPIRY_BUFFER_MS = 60_000;
 function normalizeEndpointUrl(baseUrl, endpoint) {
     if (/^https?:\/\//i.test(endpoint)) {
         return endpoint;
@@ -90,12 +93,20 @@ export class BrainforkMcpClient {
     initialized = false;
     initializePromise = null;
     requestCounter = 1;
-    constructor(config, logger, fetchImpl = globalThis.fetch) {
+    refreshToken;
+    tokenExpiresAt;
+    tokenBaseUrl;
+    configPath;
+    constructor(config, logger, fetchImpl = globalThis.fetch, configPath) {
         this.logger = logger;
         this.endpointUrl = normalizeEndpointUrl(config.baseUrl, config.endpoint);
         this.authorizationHeader = normalizeAuthorizationHeader(config.apiKey);
         this.requestTimeoutMs = config.requestTimeoutMs;
         this.fetchImpl = fetchImpl;
+        this.refreshToken = config.refreshToken ?? null;
+        this.tokenExpiresAt = config.tokenExpiresAt ?? null;
+        this.tokenBaseUrl = config.baseUrl;
+        this.configPath = configPath ?? null;
     }
     get serverKey() {
         return this.endpointUrl;
@@ -132,13 +143,108 @@ export class BrainforkMcpClient {
         };
     }
     async cleanupDocument(params) {
+        const toolName = params.mode === "delete" ? "delete_document" : "archive_document";
         return {
-            toolName: "archive_document",
-            response: await this.callToolParsed("archive_document", {
+            toolName,
+            response: await this.callToolParsed(toolName, {
                 externalId: params.externalId,
-                mode: params.mode,
+                ...(params.mode === "archive" ? { mode: params.mode } : {}),
             }),
         };
+    }
+    isTokenExpired() {
+        if (this.tokenExpiresAt === null)
+            return false;
+        return Date.now() >= this.tokenExpiresAt - TOKEN_EXPIRY_BUFFER_MS;
+    }
+    async refreshAccessToken() {
+        if (!this.refreshToken) {
+            throw new Error("No refresh token available");
+        }
+        const response = await this.fetchImpl(`${this.tokenBaseUrl.replace(/\/+$/, "")}/oauth/token`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                Accept: "application/json",
+            },
+            body: new URLSearchParams({
+                grant_type: "refresh_token",
+                refresh_token: this.refreshToken,
+                client_id: OAUTH_CLIENT_ID,
+            }).toString(),
+            signal: AbortSignal.timeout(this.requestTimeoutMs),
+        });
+        const text = await response.text();
+        let payload;
+        try {
+            payload = text ? JSON.parse(text) : {};
+        }
+        catch {
+            throw new Error(`Token refresh failed with non-JSON response (${response.status})`);
+        }
+        if (!response.ok) {
+            const detail = typeof payload.error_description === "string"
+                ? payload.error_description
+                : typeof payload.error === "string"
+                    ? payload.error
+                    : response.statusText;
+            throw new Error(`Token refresh failed (${response.status}): ${detail}`);
+        }
+        const accessToken = payload.access_token;
+        if (typeof accessToken !== "string" || !accessToken.trim()) {
+            throw new Error("Token refresh succeeded but access_token was missing");
+        }
+        this.authorizationHeader = normalizeAuthorizationHeader(accessToken);
+        if (typeof payload.refresh_token === "string") {
+            this.refreshToken = payload.refresh_token;
+        }
+        if (typeof payload.expires_in === "number") {
+            this.tokenExpiresAt = Date.now() + payload.expires_in * 1000;
+        }
+        if (this.configPath) {
+            await this.persistTokens(accessToken);
+        }
+    }
+    async persistTokens(accessToken) {
+        if (!this.configPath)
+            return;
+        const asRec = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
+        let rawConfig = {};
+        try {
+            const text = await fs.readFile(this.configPath, "utf8");
+            rawConfig = text.trim() ? JSON.parse(text) : {};
+        }
+        catch (error) {
+            const nodeError = error;
+            if (nodeError.code !== "ENOENT")
+                throw error;
+        }
+        const plugins = asRec(rawConfig.plugins) ?? {};
+        const entries = asRec(plugins.entries) ?? {};
+        const existingEntry = asRec(entries["brainfork-openclaw"]) ?? {};
+        const existingConfig = asRec(existingEntry.config) ?? {};
+        const updatedConfig = {
+            ...existingConfig,
+            apiKey: accessToken,
+            ...(this.refreshToken !== null ? { refreshToken: this.refreshToken } : {}),
+            ...(this.tokenExpiresAt !== null ? { tokenExpiresAt: this.tokenExpiresAt } : {}),
+        };
+        const nextConfig = {
+            ...rawConfig,
+            plugins: {
+                ...plugins,
+                entries: {
+                    ...entries,
+                    "brainfork-openclaw": {
+                        ...existingEntry,
+                        config: updatedConfig,
+                    },
+                },
+            },
+        };
+        const tmpPath = `${this.configPath}.tmp`;
+        await fs.writeFile(tmpPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+        await fs.rename(tmpPath, this.configPath);
     }
     async ensureInitialized() {
         if (this.initialized) {
@@ -178,7 +284,10 @@ export class BrainforkMcpClient {
         this.sessionId = null;
         this.initialized = false;
     }
-    async request(method, params, expectResponse) {
+    async request(method, params, expectResponse, retried = false) {
+        if (this.refreshToken && this.isTokenExpired()) {
+            await this.refreshAccessToken();
+        }
         const isNotification = method.startsWith("notifications/");
         const id = isNotification ? undefined : this.requestCounter++;
         const requestBody = {
@@ -205,6 +314,10 @@ export class BrainforkMcpClient {
         const nextSessionId = response.headers.get("mcp-session-id");
         if (nextSessionId) {
             this.sessionId = nextSessionId;
+        }
+        if (response.status === 401 && this.refreshToken && !retried) {
+            await this.refreshAccessToken();
+            return this.request(method, params, expectResponse, true);
         }
         const body = await response.text();
         const parsed = body ? parseMcpResponseBody(body) : undefined;

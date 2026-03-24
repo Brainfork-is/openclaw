@@ -31,6 +31,15 @@ declare const brainforkPlugin: {
                 placeholder: string;
                 help: string;
             };
+            refreshToken: {
+                label: string;
+                sensitive: boolean;
+                help: string;
+            };
+            tokenExpiresAt: {
+                label: string;
+                help: string;
+            };
             autoRecall: {
                 label: string;
                 help: string;
@@ -84,6 +93,12 @@ declare const brainforkPlugin: {
                     type: string;
                 };
                 apiKey: {
+                    type: string;
+                };
+                refreshToken: {
+                    type: string;
+                };
+                tokenExpiresAt: {
                     type: string;
                 };
                 autoRecall: {

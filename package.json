@@ -32,18 +32,24 @@
     "build": "tsc -p ./tsconfig.json",
     "clean": "rm -rf ./dist",
     "prepack": "npm run clean && npm run build",
-    "test": "vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts"
+    "test:unit": "vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts",
+    "test": "npm run test:unit && bash scripts/test-harness.sh",
+    "test:install": "bash scripts/test-harness.sh"
   },
-  "dependencies": {
-    "openclaw": "^2026.2.4"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^25.2.0",
+    "openclaw": "^2026.2.4",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "openclaw": ">=2026.1.26"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public"

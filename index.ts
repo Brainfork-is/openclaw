@@ -474,7 +474,8 @@ const brainforkPlugin = {
       api.registerCli(
         ({ program }) => {
           const brainfork = program.command("brainfork").description("Brainfork memory plugin commands");
-          registerBrainforkSetupCommand({ brainfork, logger: api.logger, resolvePath: (p) => api.resolvePath(p) });
+          const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
+          registerBrainforkSetupCommand({ brainfork, logger: api.logger, configPath: path.join(stateDir, "openclaw.json") });
         },
         { commands: ["brainfork"] },
       );
@@ -715,7 +716,8 @@ const brainforkPlugin = {
         const rootDir = resolveWorkspaceDir(workspaceDir);
         const brainfork = program.command("brainfork").description("Brainfork memory plugin commands");
 
-        registerBrainforkSetupCommand({ brainfork, logger: api.logger, resolvePath: (p) => api.resolvePath(p) });
+        const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
+        registerBrainforkSetupCommand({ brainfork, logger: api.logger, configPath: path.join(stateDir, "openclaw.json") });
 
         brainfork
           .command("index")

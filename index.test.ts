@@ -61,12 +61,16 @@ describe("brainfork-openclaw package contract", () => {
     expect(packageJson.scripts).toMatchObject({
       build: "tsc -p ./tsconfig.json",
       prepack: "npm run clean && npm run build",
-      test: "vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts",
+      test: "npm run test:unit && bash scripts/test-harness.sh",
+      "test:unit": "vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts",
+      "test:install": "bash scripts/test-harness.sh",
     });
-    expect(packageJson.dependencies).toMatchObject({
-      openclaw: expect.not.stringContaining("workspace:"),
-    });
-    expect((packageJson.devDependencies as Record<string, string>).openclaw).toBeUndefined();
+    // openclaw must NOT be in production dependencies (it's provided by the host gateway)
+    const deps = (packageJson.dependencies ?? {}) as Record<string, string>;
+    expect(deps.openclaw).toBeUndefined();
+    // openclaw should be in devDependencies (for types/testing) and peerDependencies (for host)
+    expect((packageJson.devDependencies as Record<string, string>).openclaw).toBeDefined();
+    expect((packageJson.peerDependencies as Record<string, string>).openclaw).toBeDefined();
     expect(packageJson.openclaw).toMatchObject({
       extensions: ["./dist/index.js"],
       install: {

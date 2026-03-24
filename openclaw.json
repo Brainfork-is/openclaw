@@ -1,0 +1,14 @@
+{
+  "plugins": {
+    "entries": {
+      "brainfork-openclaw": {
+        "enabled": true,
+        "config": {
+          "baseUrl": "http://127.0.0.1:42443",
+          "endpoint": "mcp",
+          "apiKey": "test-api-key-harness"
+        }
+      }
+    }
+  }
+}

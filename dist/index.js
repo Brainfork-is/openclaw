@@ -101,7 +101,7 @@ async function recallBrainfork(client, query, config) {
     // Use 'query' mode (hybrid BM25 + vector + reranking) for best recall quality.
     // Falls back to 'rag_query' if 'query' tool is not available on the server.
     const searchMode = config.searchMode ?? "query";
-    const toolName = searchMode === "query" ? "query" : searchMode === "vsearch" ? "vsearch" : "rag_query";
+    const toolName = searchMode === "query" ? "query" : searchMode === "vsearch" ? "vsearch" : searchMode === "search" ? "search" : "rag_query";
     try {
         const response = await client.callToolParsed(toolName, {
             query,
@@ -115,20 +115,20 @@ async function recallBrainfork(client, query, config) {
             .filter((item) => item.score === undefined || item.score >= config.similarityThreshold)
             .slice(0, config.maxResults);
     }
-    catch {
+    catch (error) {
         // Fallback: server may not have the new tools yet
         if (toolName !== "rag_query") {
             const response = await client.callToolParsed("rag_query", {
                 query,
-                maxResults: config.maxResults,
-                similarityThreshold: config.similarityThreshold,
+                max_results: config.maxResults,
+                similarity_threshold: config.similarityThreshold,
             });
             const parsed = response.parsedText ?? response.raw;
             return normalizeRagResults(parsed)
                 .filter((item) => item.score === undefined || item.score >= config.similarityThreshold)
                 .slice(0, config.maxResults);
         }
-        throw arguments[0];
+        throw error;
     }
 }
 function buildRecallBlock(results, config) {
@@ -359,7 +359,8 @@ const brainforkPlugin = {
             // Register only the setup CLI command so users can configure
             api.registerCli(({ program }) => {
                 const brainfork = program.command("brainfork").description("Brainfork memory plugin commands");
-                registerBrainforkSetupCommand({ brainfork, logger: api.logger, resolvePath: (p) => api.resolvePath(p) });
+                const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
+                registerBrainforkSetupCommand({ brainfork, logger: api.logger, configPath: path.join(stateDir, "openclaw.json") });
             }, { commands: ["brainfork"] });
             return;
         }
@@ -548,7 +549,8 @@ const brainforkPlugin = {
         api.registerCli(({ program, workspaceDir }) => {
             const rootDir = resolveWorkspaceDir(workspaceDir);
             const brainfork = program.command("brainfork").description("Brainfork memory plugin commands");
-            registerBrainforkSetupCommand({ brainfork, logger: api.logger, resolvePath: (p) => api.resolvePath(p) });
+            const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
+            registerBrainforkSetupCommand({ brainfork, logger: api.logger, configPath: path.join(stateDir, "openclaw.json") });
             brainfork
                 .command("index")
                 .description("Sync MEMORY.md and memory/**/*.md to Brainfork")

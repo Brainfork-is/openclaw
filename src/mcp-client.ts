@@ -1,9 +1,13 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { PluginLogger } from "openclaw/plugin-sdk";
 import type { BrainforkPluginConfig, DeleteMode } from "./config.js";
 
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 const CLIENT_NAME = "openclaw-brainfork-plugin";
 const CLIENT_VERSION = "1.0.0";
+const OAUTH_CLIENT_ID = "openclaw-brainfork-plugin";
+const TOKEN_EXPIRY_BUFFER_MS = 60_000;
 
 type JsonRpcEnvelope =
   | { jsonrpc: "2.0"; id?: number | string | null; result?: unknown }
@@ -116,23 +120,32 @@ function sessionResetError(error: unknown): boolean {
 
 export class BrainforkMcpClient {
   private readonly endpointUrl: string;
-  private readonly authorizationHeader: string;
+  private authorizationHeader: string;
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
   private sessionId: string | null = null;
   private initialized = false;
   private initializePromise: Promise<void> | null = null;
   private requestCounter = 1;
+  private refreshToken: string | null;
+  private tokenExpiresAt: number | null;
+  private readonly tokenBaseUrl: string;
+  private readonly configPath: string | null;
 
   constructor(
     config: BrainforkPluginConfig,
     private readonly logger: PluginLogger,
     fetchImpl: typeof fetch = globalThis.fetch,
+    configPath?: string,
   ) {
     this.endpointUrl = normalizeEndpointUrl(config.baseUrl, config.endpoint);
     this.authorizationHeader = normalizeAuthorizationHeader(config.apiKey);
     this.requestTimeoutMs = config.requestTimeoutMs;
     this.fetchImpl = fetchImpl;
+    this.refreshToken = config.refreshToken ?? null;
+    this.tokenExpiresAt = config.tokenExpiresAt ?? null;
+    this.tokenBaseUrl = config.baseUrl;
+    this.configPath = configPath ?? null;
   }
 
   get serverKey(): string {
@@ -191,6 +204,115 @@ export class BrainforkMcpClient {
     };
   }
 
+  private isTokenExpired(): boolean {
+    if (this.tokenExpiresAt === null) return false;
+    return Date.now() >= this.tokenExpiresAt - TOKEN_EXPIRY_BUFFER_MS;
+  }
+
+  private async refreshAccessToken(): Promise<void> {
+    if (!this.refreshToken) {
+      throw new Error("No refresh token available");
+    }
+
+    const response = await this.fetchImpl(
+      `${this.tokenBaseUrl.replace(/\/+$/, "")}/oauth/token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: this.refreshToken,
+          client_id: OAUTH_CLIENT_ID,
+        }).toString(),
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
+      },
+    );
+
+    const text = await response.text();
+    let payload: Record<string, unknown>;
+    try {
+      payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      throw new Error(`Token refresh failed with non-JSON response (${response.status})`);
+    }
+
+    if (!response.ok) {
+      const detail =
+        typeof payload.error_description === "string"
+          ? payload.error_description
+          : typeof payload.error === "string"
+            ? payload.error
+            : response.statusText;
+      throw new Error(`Token refresh failed (${response.status}): ${detail}`);
+    }
+
+    const accessToken = payload.access_token;
+    if (typeof accessToken !== "string" || !accessToken.trim()) {
+      throw new Error("Token refresh succeeded but access_token was missing");
+    }
+
+    this.authorizationHeader = normalizeAuthorizationHeader(accessToken);
+    if (typeof payload.refresh_token === "string") {
+      this.refreshToken = payload.refresh_token;
+    }
+    if (typeof payload.expires_in === "number") {
+      this.tokenExpiresAt = Date.now() + payload.expires_in * 1000;
+    }
+
+    if (this.configPath) {
+      await this.persistTokens(accessToken);
+    }
+  }
+
+  private async persistTokens(accessToken: string): Promise<void> {
+    if (!this.configPath) return;
+
+    const asRec = (v: unknown): Record<string, unknown> | null =>
+      v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+
+    let rawConfig: Record<string, unknown> = {};
+    try {
+      const text = await fs.readFile(this.configPath, "utf8");
+      rawConfig = text.trim() ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError.code !== "ENOENT") throw error;
+    }
+
+    const plugins = asRec(rawConfig.plugins) ?? {};
+    const entries = asRec(plugins.entries) ?? {};
+    const existingEntry = asRec(entries["brainfork-openclaw"]) ?? {};
+    const existingConfig = asRec(existingEntry.config) ?? {};
+
+    const updatedConfig = {
+      ...existingConfig,
+      apiKey: accessToken,
+      ...(this.refreshToken !== null ? { refreshToken: this.refreshToken } : {}),
+      ...(this.tokenExpiresAt !== null ? { tokenExpiresAt: this.tokenExpiresAt } : {}),
+    };
+
+    const nextConfig = {
+      ...rawConfig,
+      plugins: {
+        ...plugins,
+        entries: {
+          ...entries,
+          "brainfork-openclaw": {
+            ...existingEntry,
+            config: updatedConfig,
+          },
+        },
+      },
+    };
+
+    const tmpPath = `${this.configPath}.tmp`;
+    await fs.writeFile(tmpPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+    await fs.rename(tmpPath, this.configPath);
+  }
+
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) {
       return;
@@ -242,7 +364,12 @@ export class BrainforkMcpClient {
     method: string,
     params: Record<string, unknown>,
     expectResponse: boolean,
+    retried = false,
   ): Promise<unknown> {
+    if (this.refreshToken && this.isTokenExpired()) {
+      await this.refreshAccessToken();
+    }
+
     const isNotification = method.startsWith("notifications/");
     const id = isNotification ? undefined : this.requestCounter++;
     const requestBody = {
@@ -272,6 +399,11 @@ export class BrainforkMcpClient {
     const nextSessionId = response.headers.get("mcp-session-id");
     if (nextSessionId) {
       this.sessionId = nextSessionId;
+    }
+
+    if (response.status === 401 && this.refreshToken && !retried) {
+      await this.refreshAccessToken();
+      return this.request(method, params, expectResponse, true);
     }
 
     const body = await response.text();

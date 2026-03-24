@@ -8,14 +8,18 @@ export type ParsedToolCallResponse = {
 export declare class BrainforkMcpClient {
     private readonly logger;
     private readonly endpointUrl;
-    private readonly authorizationHeader;
+    private authorizationHeader;
     private readonly fetchImpl;
     private readonly requestTimeoutMs;
     private sessionId;
     private initialized;
     private initializePromise;
     private requestCounter;
-    constructor(config: BrainforkPluginConfig, logger: PluginLogger, fetchImpl?: typeof fetch);
+    private refreshToken;
+    private tokenExpiresAt;
+    private readonly tokenBaseUrl;
+    private readonly configPath;
+    constructor(config: BrainforkPluginConfig, logger: PluginLogger, fetchImpl?: typeof fetch, configPath?: string);
     get serverKey(): string;
     listTools(): Promise<Array<{
         name?: string;
@@ -33,6 +37,9 @@ export declare class BrainforkMcpClient {
         toolName: string;
         response: ParsedToolCallResponse;
     }>;
+    private isTokenExpired;
+    private refreshAccessToken;
+    private persistTokens;
     private ensureInitialized;
     private initialize;
     private resetSession;
