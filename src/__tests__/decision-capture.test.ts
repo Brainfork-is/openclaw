@@ -198,4 +198,44 @@ describe("detectDurableDecisions", () => {
       expect(decisions[0].context).not.toContain("sourceSession=");
     }
   });
+
+  it("strips Telegram/channel JSON metadata from context and reasoning", () => {
+    const messages = [
+      msg(
+        "user",
+        '```json { "message_id": "655", "sender_id": "6924037391", "sender": "Phil Bennett", "timestamp": "Sat 2026-03-21 16:51 UTC" } ``` ```json { "label": "Phil Bennett (6924037391)", "id": "6924037391", "name": "Phil Bennett" } ``` What database should we use?',
+      ),
+      msg(
+        "assistant",
+        '[[replytocurrent]] Good question. We decided to standardize on PostgreSQL for all new services because of JSONB support and team familiarity.',
+      ),
+    ];
+
+    const decisions = detectDurableDecisions(messages);
+    expect(decisions.length).toBe(1);
+    // Context should not contain raw JSON metadata
+    expect(decisions[0].context).not.toContain("message_id");
+    expect(decisions[0].context).not.toContain("sender_id");
+    expect(decisions[0].context).not.toContain("6924037391");
+    // Reasoning should not contain [[replytocurrent]]
+    expect(decisions[0].reasoning).not.toContain("replytocurrent");
+  });
+
+  it("strips System event lines from context", () => {
+    const messages = [
+      msg(
+        "user",
+        'System: [2026-03-21 15:48:57 UTC] Exec completed (salty-ro, code 0) :: some output\nWhat deployment strategy should we use?',
+      ),
+      msg(
+        "assistant",
+        "We decided to adopt blue-green deployments for all production services to minimize downtime.",
+      ),
+    ];
+
+    const decisions = detectDurableDecisions(messages);
+    expect(decisions.length).toBe(1);
+    expect(decisions[0].context).not.toContain("Exec completed");
+    expect(decisions[0].context).not.toContain("salty-ro");
+  });
 });
