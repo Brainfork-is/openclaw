@@ -334,7 +334,16 @@ async function syncWorkspaceMemory(
   config: BrainforkPluginConfig,
 ): Promise<SyncSummary> {
   const agentName = extractAgentName(workspaceDir);
-  const docs = await collectWorkspaceDocuments(workspaceDir);
+  const rawDocs = await collectWorkspaceDocuments(workspaceDir);
+
+  // Prefix relativePath with workspace directory name to prevent collisions.
+  // Without this, all workspaces would share externalId "MEMORY.md" and overwrite each other.
+  const wsPrefix = path.basename(workspaceDir);
+  const docs = rawDocs.map((doc) => ({
+    ...doc,
+    relativePath: `${wsPrefix}/${doc.relativePath}`,
+  }));
+
   let state = await loadServerState(workspaceDir, client.serverKey);
   const plan = buildSyncPlan(docs, state, config.deleteMode);
 
