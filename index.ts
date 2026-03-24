@@ -798,10 +798,16 @@ const brainforkPlugin = {
 
       if (config.autoIndex) {
         try {
-          // Collect all workspace dirs to sync. Start with the provided workspace,
-          // then discover all agent workspaces under ~/.openclaw/workspace-*/
-          const workspaceDirs = await discoverAgentWorkspaces(workspaceDir);
-          
+          // By default only sync the active workspace. Set syncAllWorkspaces=true to
+          // also scan and sync all ~/.openclaw/workspace-* directories (e.g. for
+          // multi-session setups). discoverAgentWorkspaces() is still used by the CLI
+          // sync command regardless of this setting.
+          const workspaceDirs = config.syncAllWorkspaces
+            ? await discoverAgentWorkspaces(workspaceDir)
+            : workspaceDir
+              ? [workspaceDir]
+              : [];
+
           for (const wsDir of workspaceDirs) {
             try {
               const summary = await syncWorkspaceMemory(client, wsDir, config);
@@ -816,7 +822,7 @@ const brainforkPlugin = {
             }
           }
         } catch (error) {
-          api.logger.warn(`[brainfork-openclaw] autoIndex discovery failed: ${String(error)}`);
+          api.logger.warn(`[brainfork-openclaw] autoIndex failed: ${String(error)}`);
         }
       }
 

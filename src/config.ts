@@ -12,6 +12,7 @@ export type BrainforkPluginConfig = {
   tokenExpiresAt?: number;
   autoRecall: boolean;
   autoIndex: boolean;
+  syncAllWorkspaces: boolean;
   captureDecisions: boolean;
   maxResults: number;
   similarityThreshold: number;
@@ -139,6 +140,7 @@ export const brainforkConfigSchema = {
         "tokenExpiresAt",
         "autoRecall",
         "autoIndex",
+        "syncAllWorkspaces",
         "captureDecisions",
         "maxResults",
         "similarityThreshold",
@@ -158,6 +160,7 @@ export const brainforkConfigSchema = {
       tokenExpiresAt: typeof raw.tokenExpiresAt === "number" ? raw.tokenExpiresAt : undefined,
       autoRecall: readBoolean(raw, "autoRecall", true),
       autoIndex: readBoolean(raw, "autoIndex", true),
+      syncAllWorkspaces: readBoolean(raw, "syncAllWorkspaces", false),
       captureDecisions: readBoolean(raw, "captureDecisions", true),
       maxResults: readInteger(raw, "maxResults", {
         fallback: DEFAULT_MAX_RESULTS,
@@ -217,6 +220,11 @@ export const brainforkConfigSchema = {
       label: "Auto Index",
       help: "Sync MEMORY.md and memory/**/*.md after each agent run",
     },
+    syncAllWorkspaces: {
+      label: "Sync All Workspaces",
+      advanced: true,
+      help: "When autoIndex is enabled, also scan and sync all ~/.openclaw/workspace-* directories (default: only the active workspace)",
+    },
     captureDecisions: {
       label: "Capture Decisions",
       help: "Log durable conversation decisions into Brainfork",
@@ -262,6 +270,7 @@ export const brainforkConfigSchema = {
       tokenExpiresAt: { type: "number" },
       autoRecall: { type: "boolean" },
       autoIndex: { type: "boolean" },
+      syncAllWorkspaces: { type: "boolean" },
       captureDecisions: { type: "boolean" },
       maxResults: { type: "integer", minimum: 1, maximum: 20 },
       similarityThreshold: { type: "number", minimum: 0, maximum: 1 },
