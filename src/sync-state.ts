@@ -5,6 +5,35 @@ import { createHash } from "node:crypto";
 import type { DeleteMode } from "./config.js";
 import type { WorkspaceDocument } from "./workspace-memory.js";
 
+const LOCK_MAX_RETRIES = 15;
+const LOCK_INITIAL_DELAY_MS = 10;
+
+async function acquireLock(lockPath: string): Promise<() => Promise<void>> {
+  let delay = LOCK_INITIAL_DELAY_MS;
+  for (let attempt = 0; attempt < LOCK_MAX_RETRIES; attempt++) {
+    try {
+      const fd = await fs.open(lockPath, "wx");
+      await fd.close();
+      return async () => {
+        try {
+          await fs.unlink(lockPath);
+        } catch {
+          // ignore – lock file may already be gone
+        }
+      };
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw err;
+      }
+      if (attempt < LOCK_MAX_RETRIES - 1) {
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+        delay = Math.min(delay * 2, 1000);
+      }
+    }
+  }
+  throw new Error(`Failed to acquire lock ${lockPath} after ${LOCK_MAX_RETRIES} attempts`);
+}
+
 export type SyncCleanupStatus = "none" | "skipped" | "archived" | "deleted";
 
 export type SyncStateEntry = {
@@ -118,12 +147,21 @@ export async function saveServerState(
   serverKey: string,
   state: SyncStateServer,
 ): Promise<void> {
-  const file = await readStateFile(workspaceDir);
-  file.servers[serverKey] = state;
-
   const statePath = resolveSyncStatePath(workspaceDir);
   await fs.mkdir(path.dirname(statePath), { recursive: true });
-  await fs.writeFile(`${statePath}`, `${JSON.stringify(file, null, 2)}\n`, "utf-8");
+
+  const lockPath = `${statePath}.lock`;
+  const releaseLock = await acquireLock(lockPath);
+  try {
+    const file = await readStateFile(workspaceDir);
+    file.servers[serverKey] = state;
+
+    const tmpPath = `${statePath}.tmp`;
+    await fs.writeFile(tmpPath, `${JSON.stringify(file, null, 2)}\n`, "utf-8");
+    await fs.rename(tmpPath, statePath);
+  } finally {
+    await releaseLock();
+  }
 }
 
 export function buildSyncPlan(
