@@ -801,27 +801,17 @@ const brainforkPlugin = {
     api.on("agent_end", async (event, ctx) => {
       const workspaceDir = resolveWorkspaceDir(ctx.workspaceDir);
 
-      if (config.autoIndex) {
+      if (config.autoIndex && workspaceDir) {
         try {
-          // Collect all workspace dirs to sync. Start with the provided workspace,
-          // then discover all agent workspaces under ~/.openclaw/workspace-*/
-          const workspaceDirs = await discoverAgentWorkspaces(workspaceDir);
-          
-          for (const wsDir of workspaceDirs) {
-            try {
-              const summary = await syncWorkspaceMemory(client, wsDir, config);
-              const total = summary.indexed + summary.changed;
-              if (total > 0 || summary.archived > 0 || summary.deleted > 0) {
-                api.logger.info(
-                  `[brainfork-openclaw] sync ${path.basename(wsDir)} indexed=${summary.indexed} changed=${summary.changed} unchanged=${summary.unchanged} archived=${summary.archived} deleted=${summary.deleted}`,
-                );
-              }
-            } catch (syncError) {
-              api.logger.warn(`[brainfork-openclaw] autoIndex failed for ${wsDir}: ${String(syncError)}`);
-            }
+          const summary = await syncWorkspaceMemory(client, workspaceDir, config);
+          const total = summary.indexed + summary.changed;
+          if (total > 0 || summary.archived > 0 || summary.deleted > 0) {
+            api.logger.info(
+              `[brainfork-openclaw] sync ${path.basename(workspaceDir)} indexed=${summary.indexed} changed=${summary.changed} unchanged=${summary.unchanged} archived=${summary.archived} deleted=${summary.deleted}`,
+            );
           }
         } catch (error) {
-          api.logger.warn(`[brainfork-openclaw] autoIndex discovery failed: ${String(error)}`);
+          api.logger.warn(`[brainfork-openclaw] autoIndex failed for ${workspaceDir}: ${String(error)}`);
         }
       }
 

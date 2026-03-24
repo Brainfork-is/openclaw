@@ -8,3 +8,5 @@
  */
 /** Returns true when a graphical desktop session is detected. */
 export declare function hasGraphicalSession(): boolean;
+/** Resolve the OpenClaw state directory from env or default. */
+export declare function resolveOpenClawStateDir(): string;

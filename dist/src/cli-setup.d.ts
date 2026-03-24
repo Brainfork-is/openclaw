@@ -15,6 +15,8 @@ export type BrainforkSetupCommandOptions = {
     brainfork: CommandLike;
     logger: PluginLogger;
     resolvePath: (input: string) => string;
+    /** Explicit state-dir config path. When provided, setup writes here instead of using resolvePath. */
+    configPath?: string;
 };
 type TokenResponse = {
     access_token: string;
@@ -31,6 +33,7 @@ export declare function exchangeOAuthCode(params: {
 }): Promise<TokenResponse>;
 export declare function detectEndpointFromAccessToken(accessToken: string): string | undefined;
 export declare function validateManualCredentials(baseUrl: string, apiKey: string): Promise<void>;
+export declare function validateEndpoint(baseUrl: string, endpoint: string, apiKey: string): Promise<void>;
 export declare function writeBrainforkPluginConfig(configPath: string, pluginConfig: BrainforkSetupConfig): Promise<void>;
 export declare function registerBrainforkSetupCommand(options: BrainforkSetupCommandOptions): void;
 export {};

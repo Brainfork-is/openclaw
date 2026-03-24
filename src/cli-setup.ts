@@ -7,7 +7,7 @@ import readline from "node:readline/promises";
 import type { Writable } from "node:stream";
 import type { PluginLogger } from "openclaw/plugin-sdk";
 import { startOAuthCallbackServer } from "./oauth-callback-server.js";
-import { hasGraphicalSession } from "./env-detect.js";
+import { hasGraphicalSession, resolveOpenClawStateDir } from "./env-detect.js";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_BASE_URL = "https://api.brainfork.is";
@@ -47,7 +47,13 @@ export type BrainforkSetupCommandOptions = {
   brainfork: CommandLike;
   logger: PluginLogger;
   resolvePath: (input: string) => string;
+  /** Explicit state-dir config path. When provided, setup writes here instead of using resolvePath. */
+  configPath?: string;
 };
+
+function resolveStateConfigPath(): string {
+  return path.join(resolveOpenClawStateDir(), "openclaw.json");
+}
 
 type PromptApi = {
   ask(message: string, defaultValue?: string): Promise<string>;
@@ -99,6 +105,7 @@ export async function exchangeOAuthCode(params: {
       client_id: OAUTH_CLIENT_ID,
       code_verifier: params.verifier,
     }),
+    signal: AbortSignal.timeout(30_000),
   });
 
   const text = await response.text();
@@ -175,11 +182,43 @@ export async function validateManualCredentials(baseUrl: string, apiKey: string)
         : `ApiKey ${apiKey}`,
       Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
     },
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(`Validation failed (${response.status}): ${body || response.statusText}`);
+  }
+}
+
+export async function validateEndpoint(baseUrl: string, endpoint: string, apiKey: string): Promise<void> {
+  const url = `${normalizeBaseUrl(baseUrl)}/${endpoint}/mcp`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: apiKey.startsWith("Bearer ") || apiKey.startsWith("ApiKey ")
+        ? apiKey
+        : `ApiKey ${apiKey}`,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Endpoint '${endpoint}' is not accessible (${response.status}): ${response.statusText}`);
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    const text = await response.text();
+    payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    throw new Error(`Endpoint '${endpoint}' returned an invalid JSON-RPC response`);
+  }
+
+  if (typeof payload.jsonrpc !== "string" || (!payload.result && !payload.error)) {
+    throw new Error(`Endpoint '${endpoint}' did not return a valid JSON-RPC response`);
   }
 }
 
@@ -224,6 +263,9 @@ export async function writeBrainforkPluginConfig(
 
   await fs.mkdir(path.dirname(configPath), { recursive: true });
   await fs.writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+  if (process.platform !== "win32") {
+    await fs.chmod(configPath, 0o600);
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -333,6 +375,7 @@ async function runManualSetup(prompts: PromptApi, configPath: string): Promise<B
     throw new Error("Endpoint/server name is required");
   }
 
+  await validateEndpoint(baseUrl, endpoint, apiKey);
   const nextConfig = { baseUrl, endpoint, apiKey };
   await writeBrainforkPluginConfig(configPath, nextConfig);
   return nextConfig;
@@ -376,6 +419,7 @@ async function runBrowserOAuthSetup(prompts: PromptApi, configPath: string): Pro
     throw new Error("Endpoint/server name is required");
   }
 
+  await validateEndpoint(baseUrl, endpoint, tokens.access_token);
   const nextConfig = {
     baseUrl,
     endpoint,
@@ -391,7 +435,11 @@ export function registerBrainforkSetupCommand(options: BrainforkSetupCommandOpti
     .description("Interactively connect this OpenClaw install to Brainfork")
     .action(async () => {
       const prompts = createPromptApi();
-      const configPath = options.resolvePath("openclaw.json");
+      // Use explicit configPath if provided, otherwise resolve the state-dir config path.
+      // NOTE: options.resolvePath resolves against the workspace directory, which is WRONG
+      // for plugin config — we need the OpenClaw state config at ~/.openclaw/openclaw.json
+      // (or $OPENCLAW_STATE_DIR/openclaw.json).
+      const configPath = options.configPath ?? resolveStateConfigPath();
 
       try {
         const choice = await prompts.ask(

@@ -113,17 +113,74 @@ export async function loadServerState(
   return file.servers[serverKey] ?? createEmptyServerState();
 }
 
+const LOCK_TIMEOUT_MS = 30_000;
+const LOCK_POLL_MS = 50;
+
+async function acquireLock(lockDir: string): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    try {
+      await fs.mkdir(lockDir);
+      return;
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw err;
+
+      // Check if lock is stale
+      try {
+        const stat = await fs.stat(lockDir);
+        if (Date.now() - stat.mtimeMs > LOCK_TIMEOUT_MS) {
+          await fs.rm(lockDir, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+        // Lock disappeared between EEXIST and stat — retry
+        continue;
+      }
+
+      if (Date.now() - start > LOCK_TIMEOUT_MS) {
+        throw new Error(`saveServerState: timed out waiting for lock at ${lockDir}`);
+      }
+
+      await new Promise<void>((resolve) => setTimeout(resolve, LOCK_POLL_MS));
+    }
+  }
+}
+
+async function releaseLock(lockDir: string): Promise<void> {
+  try {
+    await fs.rm(lockDir, { recursive: true, force: true });
+  } catch {
+    // Ignore errors releasing lock
+  }
+}
+
 export async function saveServerState(
   workspaceDir: string,
   serverKey: string,
   state: SyncStateServer,
 ): Promise<void> {
-  const file = await readStateFile(workspaceDir);
-  file.servers[serverKey] = state;
-
   const statePath = resolveSyncStatePath(workspaceDir);
+  const lockDir = `${statePath}.lock`;
+  const tmpPath = `${statePath}.tmp.${process.pid}.${Date.now()}`;
+
   await fs.mkdir(path.dirname(statePath), { recursive: true });
-  await fs.writeFile(`${statePath}`, `${JSON.stringify(file, null, 2)}\n`, "utf-8");
+  await acquireLock(lockDir);
+  try {
+    const file = await readStateFile(workspaceDir);
+    file.servers[serverKey] = state;
+    await fs.writeFile(tmpPath, `${JSON.stringify(file, null, 2)}\n`, "utf-8");
+    await fs.rename(tmpPath, statePath);
+  } catch (err) {
+    try {
+      await fs.unlink(tmpPath);
+    } catch {
+      // temp file may not exist
+    }
+    throw err;
+  } finally {
+    await releaseLock(lockDir);
+  }
 }
 
 export function buildSyncPlan(
