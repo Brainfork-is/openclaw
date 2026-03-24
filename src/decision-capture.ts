@@ -65,10 +65,39 @@ function stripInternalMetadata(value: string): string {
     .replace(/\[Internal task completion event\][^\n]*/g, "")
     .replace(/Conversation info \(untrusted metadata\):[\s\S]*?```\s*/g, "")
     .replace(/Sender \(untrusted metadata\):[\s\S]*?```\s*/g, "")
+    // Telegram/channel message metadata JSON blocks (fenced or bare)
+    .replace(/```\s*json\s*\{[^}]*"message_id"[^}]*\}\s*```/g, "")
+    .replace(/```\s*json\s*\{[^}]*"sender_id"[^}]*\}\s*```/g, "")
+    .replace(/```\s*json\s*\{[^}]*"label"[^}]*\}\s*```/g, "")
+    .replace(/\bjson\s*\{\s*"message_id"\s*:[^}]*\}/g, "")
+    .replace(/\bjson\s*\{\s*"label"\s*:[^}]*\}/g, "")
+    .replace(/\bjson\s*\{\s*"sender_id"\s*:[^}]*\}/g, "")
+    // System event lines (exec completions, cron triggers)
+    .replace(/System:\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*[^\n]*/g, "")
     .replace(/sourceSession=[^\s]*/g, "")
     .replace(/sourceChannel=[^\s]*/g, "")
     .replace(/sourceTool=[^\s]*/g, "")
     .replace(/\[cron:[^\]]*\]/g, "")
+    // Internal action markers
+    .replace(/\[\[replytocurrent\]\]/gi, "")
+    .replace(/\[\[reply\]\]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Strip internal metadata from assistant reasoning text */
+function stripReasoningMetadata(value: string): string {
+  return value
+    .replace(/\[\[replytocurrent\]\]/gi, "")
+    .replace(/\[\[reply\]\]/gi, "")
+    // Telegram/channel message metadata JSON blocks
+    .replace(/```\s*json\s*\{[^}]*"message_id"[^}]*\}\s*```/g, "")
+    .replace(/```\s*json\s*\{[^}]*"sender_id"[^}]*\}\s*```/g, "")
+    .replace(/```\s*json\s*\{[^}]*"label"[^}]*\}\s*```/g, "")
+    .replace(/\bjson\s*\{\s*"message_id"\s*:[^}]*\}/g, "")
+    .replace(/\bjson\s*\{\s*"label"\s*:[^}]*\}/g, "")
+    // System event lines
+    .replace(/System:\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*[^\n]*/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -190,7 +219,7 @@ export function detectDurableDecisions(messages: unknown[], limit = 3): Captured
       }
       seen.add(dedupeKey);
 
-      const reasoning = stripMarkdown(clip(turn.text, 1000));
+      const reasoning = stripReasoningMetadata(stripMarkdown(clip(turn.text, 1000)));
       const cleanContext = stripInternalMetadata(lastUserText) || "Derived from an OpenClaw conversation.";
       decisions.push({
         title: buildTitle(cleanSentence),
