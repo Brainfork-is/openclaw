@@ -215,6 +215,19 @@ describe("buildSyncPlan", () => {
     }
   });
 
+  it("emits cleanup(delete) for removed docs when deleteMode is delete", () => {
+    const doc = makeDoc("old.md", "gone");
+    let state = createEmptyServerState();
+    state = applyUpsertResult(state, doc);
+
+    const plan = buildSyncPlan([], state, "delete");
+    expect(plan).toHaveLength(1);
+    expect(plan[0].type).toBe("cleanup");
+    if (plan[0].type === "cleanup") {
+      expect(plan[0].mode).toBe("delete");
+    }
+  });
+
   it("emits upsert(restored) for previously deleted docs that reappear", () => {
     const doc = makeDoc("MEMORY.md", "hello");
     let state = createEmptyServerState();

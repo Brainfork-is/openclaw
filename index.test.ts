@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import plugin, { extractAgentName } from "./index.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import plugin, { extractAgentName, recallBrainfork } from "./index.js";
 import { brainforkConfigSchema } from "./src/config.js";
 import {
   applyRemovedResult,
@@ -264,5 +264,50 @@ describe("brainfork-openclaw sync state", () => {
     expect(statePath).toContain(`${path.sep}.openclaw${path.sep}memory${path.sep}brainfork${path.sep}`);
     expect(statePath.endsWith(`${path.sep}sync-state.json`)).toBe(true);
     expect(statePath.includes(workspaceDir)).toBe(false);
+  });
+});
+
+const BASE_CONFIG = {
+  baseUrl: "https://api.brainfork.is",
+  endpoint: "memory-server",
+  apiKey: "bfk_123",
+};
+
+describe("recallBrainfork – search modes", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("calls the 'search' tool when searchMode=search", async () => {
+    const mockCallToolParsed = vi.fn().mockResolvedValue({ raw: [], parsedText: [] });
+    const mockClient = { callToolParsed: mockCallToolParsed } as never;
+    const config = brainforkConfigSchema.parse({ ...BASE_CONFIG, searchMode: "search" });
+
+    await recallBrainfork(mockClient, "test query", config);
+
+    expect(mockCallToolParsed).toHaveBeenCalledOnce();
+    expect(mockCallToolParsed).toHaveBeenCalledWith("search", expect.objectContaining({ query: "test query" }));
+  });
+
+  it("falls back to rag_query when the primary tool throws", async () => {
+    const mockCallToolParsed = vi.fn()
+      .mockRejectedValueOnce(new Error("tool not found"))
+      .mockResolvedValue({ raw: [], parsedText: [] });
+    const mockClient = { callToolParsed: mockCallToolParsed } as never;
+    const config = brainforkConfigSchema.parse({ ...BASE_CONFIG, searchMode: "query" });
+
+    await recallBrainfork(mockClient, "test query", config);
+
+    expect(mockCallToolParsed).toHaveBeenCalledTimes(2);
+    expect(mockCallToolParsed).toHaveBeenNthCalledWith(1, "query", expect.any(Object));
+    expect(mockCallToolParsed).toHaveBeenNthCalledWith(2, "rag_query", expect.objectContaining({ query: "test query" }));
+  });
+
+  it("rethrows when rag_query itself is the failing tool", async () => {
+    const mockCallToolParsed = vi.fn().mockRejectedValue(new Error("rag_query failed"));
+    const mockClient = { callToolParsed: mockCallToolParsed } as never;
+    const config = brainforkConfigSchema.parse({ ...BASE_CONFIG, searchMode: "query" });
+
+    await expect(recallBrainfork(mockClient, "test query", config)).rejects.toThrow("rag_query failed");
   });
 });

@@ -1,5 +1,15 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { type BrainforkPluginConfig } from "./src/config.js";
+import { BrainforkMcpClient } from "./src/mcp-client.js";
+type SearchResultItem = {
+    id?: string;
+    title?: string;
+    text?: string;
+    url?: string;
+    score?: number;
+    metadata?: Record<string, unknown>;
+};
+export declare function recallBrainfork(client: BrainforkMcpClient, query: string, config: BrainforkPluginConfig): Promise<SearchResultItem[]>;
 /**
  * Extract the agent name from a workspace directory path.
  * e.g. "/home/agent/.openclaw/workspace-osborn" → "osborn"

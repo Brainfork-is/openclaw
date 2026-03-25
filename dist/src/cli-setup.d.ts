@@ -1,4 +1,9 @@
 import type { PluginLogger } from "openclaw/plugin-sdk";
+/** Generate a PKCE code verifier and S256 challenge locally using Node.js crypto. */
+export declare function generatePkceVerifierChallenge(): {
+    verifier: string;
+    challenge: string;
+};
 type CommandLike = {
     command(name: string): {
         description(text: string): {
