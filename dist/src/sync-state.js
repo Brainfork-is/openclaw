@@ -24,8 +24,18 @@ export function resolveSyncStatePath(workspaceDir) {
 }
 async function readStateFile(workspaceDir) {
     const statePath = resolveSyncStatePath(workspaceDir);
+    let raw;
     try {
-        const raw = await fs.readFile(statePath, "utf-8");
+        raw = await fs.readFile(statePath, "utf-8");
+    }
+    catch (err) {
+        const code = err.code;
+        if (code === "ENOENT") {
+            return createEmptyStateFile();
+        }
+        throw err;
+    }
+    try {
         const parsed = JSON.parse(raw);
         if (parsed.version !== 1 || !parsed.servers || typeof parsed.servers !== "object") {
             return createEmptyStateFile();
@@ -36,6 +46,7 @@ async function readStateFile(workspaceDir) {
         };
     }
     catch {
+        console.warn(`[brainfork-openclaw] sync-state: failed to parse state file at ${statePath}, starting fresh`);
         return createEmptyStateFile();
     }
 }

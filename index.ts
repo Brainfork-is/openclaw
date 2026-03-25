@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -145,7 +146,7 @@ function normalizeRagResults(payload: unknown): SearchResultItem[] {
   }));
 }
 
-async function recallBrainfork(
+export async function recallBrainfork(
   client: BrainforkMcpClient,
   query: string,
   config: BrainforkPluginConfig,
@@ -273,9 +274,12 @@ async function pushDocumentToBrainfork(
 
 /** Generate a fingerprint for a decision to detect duplicates */
 function decisionFingerprint(decision: { decisionMade: string; reasoning: string }): string {
-  const key = `${decision.decisionMade}::${decision.reasoning}`.toLowerCase().replace(/\s+/g, " ").trim();
-  // Simple hash: take first 64 chars of the normalized key
-  return key.slice(0, 128);
+  const normalized = `${decision.decisionMade}::${decision.reasoning}`
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return createHash("sha256").update(normalized).digest("hex");
 }
 
 /** Recent decision fingerprints to prevent duplicate logging across concurrent sessions */
@@ -410,7 +414,10 @@ async function syncWorkspaceMemory(
         summary.skippedDeletes += 1;
       }
     } catch (error) {
-      summary.failed.push(`${action.type}:${"entry" in action ? action.entry.path : action.doc.relativePath}`);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const sanitized = errMsg.replace(/[\r\n]/g, " ").slice(0, 200);
+      const key = "entry" in action ? action.entry.path : action.doc.relativePath;
+      summary.failed.push(`${action.type}:${key}:${sanitized}`);
     }
   }
 

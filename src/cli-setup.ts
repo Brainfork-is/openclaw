@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_BASE_URL = "https://api.brainfork.is";
 
 /** Generate a PKCE code verifier and S256 challenge locally using Node.js crypto. */
-function generatePkceVerifierChallenge(): { verifier: string; challenge: string } {
+export function generatePkceVerifierChallenge(): { verifier: string; challenge: string } {
   const verifier = crypto.randomBytes(32).toString("base64url");
   const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
   return { verifier, challenge };

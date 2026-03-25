@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -97,7 +98,7 @@ function normalizeRagResults(payload) {
             toSimilarityScore(item.similarity),
     }));
 }
-async function recallBrainfork(client, query, config) {
+export async function recallBrainfork(client, query, config) {
     // Use 'query' mode (hybrid BM25 + vector + reranking) for best recall quality.
     // Falls back to 'rag_query' if 'query' tool is not available on the server.
     const searchMode = config.searchMode ?? "query";
@@ -201,9 +202,12 @@ async function pushDocumentToBrainfork(client, doc, agentName) {
 }
 /** Generate a fingerprint for a decision to detect duplicates */
 function decisionFingerprint(decision) {
-    const key = `${decision.decisionMade}::${decision.reasoning}`.toLowerCase().replace(/\s+/g, " ").trim();
-    // Simple hash: take first 64 chars of the normalized key
-    return key.slice(0, 128);
+    const normalized = `${decision.decisionMade}::${decision.reasoning}`
+        .toLowerCase()
+        .replace(/[^\w\s]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    return createHash("sha256").update(normalized).digest("hex");
 }
 /** Recent decision fingerprints to prevent duplicate logging across concurrent sessions */
 const recentDecisionFingerprints = new Map();
@@ -305,7 +309,10 @@ async function syncWorkspaceMemory(client, workspaceDir, config) {
             }
         }
         catch (error) {
-            summary.failed.push(`${action.type}:${"entry" in action ? action.entry.path : action.doc.relativePath}`);
+            const errMsg = error instanceof Error ? error.message : String(error);
+            const sanitized = errMsg.replace(/[\r\n]/g, " ").slice(0, 200);
+            const key = "entry" in action ? action.entry.path : action.doc.relativePath;
+            summary.failed.push(`${action.type}:${key}:${sanitized}`);
         }
     }
     await saveServerState(workspaceDir, client.serverKey, state);

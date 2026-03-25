@@ -143,9 +143,10 @@ export function detectDurableDecisions(messages, limit = 3) {
     for (const turn of turns) {
         if (turn.role === "user") {
             lastUserText = turn.text;
-            continue;
         }
-        for (const sentence of splitSentences(turn.text)) {
+        // Evaluate both user and assistant turns; strip internal metadata from user text first
+        const textForEval = turn.role === "user" ? stripInternalMetadata(turn.text) : turn.text;
+        for (const sentence of splitSentences(textForEval)) {
             const isDirectDecision = DECISION_SENTENCE.test(sentence);
             const isGoingForwardPolicy = GOING_FORWARD.test(sentence) && POLICY_SIGNAL.test(sentence);
             if ((!isDirectDecision && !isGoingForwardPolicy) || NON_DURABLE.test(sentence) || sentence.includes("?")) {
@@ -175,8 +176,10 @@ export function detectDurableDecisions(messages, limit = 3) {
                 continue;
             }
             seen.add(dedupeKey);
-            const reasoning = stripReasoningMetadata(stripMarkdown(clip(turn.text, 1000)));
-            const cleanContext = stripInternalMetadata(lastUserText) || "Derived from an OpenClaw conversation.";
+            const reasoning = stripReasoningMetadata(stripMarkdown(clip(textForEval, 1000)));
+            const cleanContext = turn.role === "user"
+                ? (textForEval || "Derived from an OpenClaw conversation.")
+                : (stripInternalMetadata(lastUserText) || "Derived from an OpenClaw conversation.");
             decisions.push({
                 title: buildTitle(cleanSentence),
                 context: clip(cleanContext, 400),

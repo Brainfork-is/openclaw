@@ -48,6 +48,8 @@ export function hashContent(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
+const MAX_FILE_SIZE_BYTES = 1 * 1024 * 1024; // 1 MB
+
 export async function collectWorkspaceDocuments(workspaceDir: string): Promise<WorkspaceDocument[]> {
   const resolvedWorkspaceDir = path.resolve(workspaceDir);
   const absolutePaths: string[] = [];
@@ -67,19 +69,27 @@ export async function collectWorkspaceDocuments(workspaceDir: string): Promise<W
 
   const documents: WorkspaceDocument[] = [];
   for (const absolutePath of deduped) {
-    const content = await fs.readFile(absolutePath, "utf-8");
-    documents.push({
-      absolutePath,
-      relativePath: toPortableRelativePath(path.relative(resolvedWorkspaceDir, absolutePath)),
-      content,
-      sha256: hashContent(content),
-    });
+    try {
+      const stat = await fs.stat(absolutePath);
+      if (stat.size > MAX_FILE_SIZE_BYTES) {
+        continue;
+      }
+      const content = await fs.readFile(absolutePath, "utf-8");
+      documents.push({
+        absolutePath,
+        relativePath: toPortableRelativePath(path.relative(resolvedWorkspaceDir, absolutePath)),
+        content,
+        sha256: hashContent(content),
+      });
+    } catch {
+      // skip unreadable files so one bad file doesn't abort the whole collection
+    }
   }
 
   return documents;
 }
 
 export function resolveWorkspaceDir(workspaceDir?: string): string | null {
-  const target = workspaceDir?.trim() ? workspaceDir : process.cwd();
+  const target = workspaceDir?.trim();
   return target ? path.resolve(target) : null;
 }
