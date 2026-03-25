@@ -101,7 +101,11 @@ async function recallBrainfork(client, query, config) {
     // Use 'query' mode (hybrid BM25 + vector + reranking) for best recall quality.
     // Falls back to 'rag_query' if 'query' tool is not available on the server.
     const searchMode = config.searchMode ?? "query";
-    const toolName = searchMode === "query" ? "query" : searchMode === "vsearch" ? "vsearch" : "rag_query";
+    // TASK-109: Map all three search modes correctly
+    const toolName = searchMode === "query" ? "query"
+        : searchMode === "vsearch" ? "vsearch"
+            : searchMode === "search" ? "search"
+                : "rag_query";
     try {
         const response = await client.callToolParsed(toolName, {
             query,
@@ -115,20 +119,22 @@ async function recallBrainfork(client, query, config) {
             .filter((item) => item.score === undefined || item.score >= config.similarityThreshold)
             .slice(0, config.maxResults);
     }
-    catch {
+    catch (error) {
         // Fallback: server may not have the new tools yet
         if (toolName !== "rag_query") {
             const response = await client.callToolParsed("rag_query", {
                 query,
-                maxResults: config.maxResults,
-                similarityThreshold: config.similarityThreshold,
+                // TASK-109: Use consistent snake_case params in fallback
+                max_results: config.maxResults,
+                similarity_threshold: config.similarityThreshold,
             });
             const parsed = response.parsedText ?? response.raw;
             return normalizeRagResults(parsed)
                 .filter((item) => item.score === undefined || item.score >= config.similarityThreshold)
                 .slice(0, config.maxResults);
         }
-        throw arguments[0];
+        // TASK-107: Rethrow the actual error, not arguments[0]
+        throw error;
     }
 }
 function buildRecallBlock(results, config) {

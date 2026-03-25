@@ -1,5 +1,10 @@
 import type { PluginLogger } from "openclaw/plugin-sdk";
 import type { BrainforkPluginConfig, DeleteMode } from "./config.js";
+import {
+  isTokenExpiredOrExpiring,
+  refreshAccessToken,
+  persistRefreshedCredentials,
+} from "./token-refresh.js";
 
 const MCP_PROTOCOL_VERSION = "2025-06-18";
 const CLIENT_NAME = "openclaw-brainfork-plugin";
@@ -116,9 +121,14 @@ function sessionResetError(error: unknown): boolean {
 
 export class BrainforkMcpClient {
   private readonly endpointUrl: string;
-  private readonly authorizationHeader: string;
+  private authorizationHeader: string;
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
+  private readonly baseUrl: string;
+  private refreshToken: string | undefined;
+  private tokenExpiresAt: string | undefined;
+  private refreshInProgress: Promise<void> | null = null;
+  private readonly configPath: string | undefined;
   private sessionId: string | null = null;
   private initialized = false;
   private initializePromise: Promise<void> | null = null;
@@ -128,11 +138,16 @@ export class BrainforkMcpClient {
     config: BrainforkPluginConfig,
     private readonly logger: PluginLogger,
     fetchImpl: typeof fetch = globalThis.fetch,
+    configPath?: string,
   ) {
     this.endpointUrl = normalizeEndpointUrl(config.baseUrl, config.endpoint);
     this.authorizationHeader = normalizeAuthorizationHeader(config.apiKey);
     this.requestTimeoutMs = config.requestTimeoutMs;
     this.fetchImpl = fetchImpl;
+    this.baseUrl = config.baseUrl;
+    this.refreshToken = config.refreshToken;
+    this.tokenExpiresAt = config.tokenExpiresAt;
+    this.configPath = configPath;
   }
 
   get serverKey(): string {
@@ -192,6 +207,83 @@ export class BrainforkMcpClient {
     };
   }
 
+  /**
+   * Proactively refresh the token if it's expired or about to expire.
+   * Deduplicates concurrent refresh attempts.
+   */
+  private async ensureTokenFresh(): Promise<void> {
+    if (!this.refreshToken || !isTokenExpiredOrExpiring(this.tokenExpiresAt)) {
+      return;
+    }
+    if (this.refreshInProgress) {
+      return await this.refreshInProgress;
+    }
+    this.refreshInProgress = this.performTokenRefresh();
+    try {
+      await this.refreshInProgress;
+    } finally {
+      this.refreshInProgress = null;
+    }
+  }
+
+  /**
+   * Attempt token refresh after a 401 response. Returns true if refresh succeeded.
+   */
+  private async tryRefreshOnUnauthorized(): Promise<boolean> {
+    if (!this.refreshToken) {
+      return false;
+    }
+    try {
+      await this.performTokenRefresh();
+      return true;
+    } catch (error) {
+      this.logger.warn?.(
+        `[brainfork-openclaw] Token refresh after 401 failed: ${String(error)}`,
+      );
+      return false;
+    }
+  }
+
+  private async performTokenRefresh(): Promise<void> {
+    if (!this.refreshToken) {
+      return;
+    }
+    this.logger.debug?.("[brainfork-openclaw] Refreshing access token...");
+    try {
+      const tokens = await refreshAccessToken(this.baseUrl, this.refreshToken, this.fetchImpl);
+
+      // Update in-memory credentials
+      this.authorizationHeader = normalizeAuthorizationHeader(tokens.access_token);
+      if (tokens.refresh_token) {
+        this.refreshToken = tokens.refresh_token;
+      }
+      if (tokens.expires_in) {
+        this.tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+      }
+
+      // Persist to config atomically
+      try {
+        await persistRefreshedCredentials(
+          {
+            apiKey: tokens.access_token,
+            refreshToken: this.refreshToken,
+            tokenExpiresAt: this.tokenExpiresAt,
+          },
+          this.configPath,
+        );
+        this.logger.debug?.("[brainfork-openclaw] Refreshed credentials persisted to config");
+      } catch (persistError) {
+        // Log but don't fail — in-memory credentials are already updated
+        this.logger.warn?.(
+          `[brainfork-openclaw] Failed to persist refreshed credentials: ${String(persistError)}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error?.(`[brainfork-openclaw] Token refresh failed: ${String(error)}`);
+      throw error;
+    }
+  }
+
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) {
       return;
@@ -244,6 +336,18 @@ export class BrainforkMcpClient {
     params: Record<string, unknown>,
     expectResponse: boolean,
   ): Promise<unknown> {
+    // Proactively refresh token before making the request
+    await this.ensureTokenFresh();
+
+    return this.executeRequest(method, params, expectResponse, true);
+  }
+
+  private async executeRequest(
+    method: string,
+    params: Record<string, unknown>,
+    expectResponse: boolean,
+    allowRetryOn401: boolean,
+  ): Promise<unknown> {
     const isNotification = method.startsWith("notifications/");
     const id = isNotification ? undefined : this.requestCounter++;
     const requestBody = {
@@ -277,6 +381,16 @@ export class BrainforkMcpClient {
 
     const body = await response.text();
     const parsed = body ? parseMcpResponseBody(body) : undefined;
+
+    // Handle 401 by attempting token refresh and retrying once
+    if (response.status === 401 && allowRetryOn401) {
+      const refreshed = await this.tryRefreshOnUnauthorized();
+      if (refreshed) {
+        this.resetSession();
+        await this.initialize();
+        return this.executeRequest(method, params, expectResponse, false);
+      }
+    }
 
     if (!response.ok) {
       throw new Error(toErrorMessage(response.status, body, parsed));

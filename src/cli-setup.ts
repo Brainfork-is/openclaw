@@ -41,6 +41,8 @@ export type BrainforkSetupConfig = {
   baseUrl: string;
   endpoint: string;
   apiKey: string;
+  refreshToken?: string;
+  tokenExpiresAt?: string;
 };
 
 export type BrainforkSetupCommandOptions = {
@@ -255,6 +257,8 @@ export async function writeBrainforkPluginConfig(
             baseUrl: pluginConfig.baseUrl,
             endpoint: pluginConfig.endpoint,
             apiKey: pluginConfig.apiKey,
+            ...(pluginConfig.refreshToken ? { refreshToken: pluginConfig.refreshToken } : {}),
+            ...(pluginConfig.tokenExpiresAt ? { tokenExpiresAt: pluginConfig.tokenExpiresAt } : {}),
           },
         },
       },
@@ -421,10 +425,14 @@ async function runBrowserOAuthSetup(prompts: PromptApi, configPath: string): Pro
   }
 
   await validateEndpoint(baseUrl, endpoint, tokens.access_token);
-  const nextConfig = {
+  const nextConfig: BrainforkSetupConfig = {
     baseUrl,
     endpoint,
     apiKey: tokens.access_token,
+    ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
+    ...(tokens.expires_in
+      ? { tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString() }
+      : {}),
   };
   await writeBrainforkPluginConfig(configPath, nextConfig);
   return nextConfig;

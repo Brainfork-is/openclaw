@@ -6,6 +6,10 @@ export type BrainforkPluginConfig = {
     baseUrl: string;
     endpoint: string;
     apiKey: string;
+    /** OAuth refresh token for automatic token renewal. */
+    refreshToken?: string;
+    /** ISO-8601 timestamp when the current access token expires. */
+    tokenExpiresAt?: string;
     autoRecall: boolean;
     autoIndex: boolean;
     captureDecisions: boolean;
@@ -88,6 +92,12 @@ export declare const brainforkConfigSchema: {
                 type: string;
             };
             apiKey: {
+                type: string;
+            };
+            refreshToken: {
+                type: string;
+            };
+            tokenExpiresAt: {
                 type: string;
             };
             autoRecall: {

@@ -187,6 +187,8 @@ export async function writeBrainforkPluginConfig(configPath, pluginConfig) {
                         baseUrl: pluginConfig.baseUrl,
                         endpoint: pluginConfig.endpoint,
                         apiKey: pluginConfig.apiKey,
+                        ...(pluginConfig.refreshToken ? { refreshToken: pluginConfig.refreshToken } : {}),
+                        ...(pluginConfig.tokenExpiresAt ? { tokenExpiresAt: pluginConfig.tokenExpiresAt } : {}),
                     },
                 },
             },
@@ -304,7 +306,8 @@ async function runBrowserOAuthSetup(prompts, configPath) {
     const { verifier, challenge } = generatePkceVerifierChallenge();
     const state = crypto.randomUUID();
     const { server, port, codePromise } = await startOAuthCallbackServer(state, DEFAULT_TIMEOUT_MS);
-    const redirectUri = `http://localhost:${port}/callback`;
+    // TASK-110: Use 127.0.0.1 to match callback server bind address (avoids IPv6 mismatch)
+    const redirectUri = `http://127.0.0.1:${port}/callback`;
     const authorizeUrl = buildAuthorizeUrl(baseUrl, redirectUri, state, challenge);
     try {
         await openBrowser(authorizeUrl);
@@ -340,6 +343,10 @@ async function runBrowserOAuthSetup(prompts, configPath) {
         baseUrl,
         endpoint,
         apiKey: tokens.access_token,
+        ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
+        ...(tokens.expires_in
+            ? { tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString() }
+            : {}),
     };
     await writeBrainforkPluginConfig(configPath, nextConfig);
     return nextConfig;
