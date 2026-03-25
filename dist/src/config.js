@@ -82,6 +82,8 @@ export const brainforkConfigSchema = {
             "baseUrl",
             "endpoint",
             "apiKey",
+            "refreshToken",
+            "tokenExpiresAt",
             "autoRecall",
             "autoIndex",
             "captureDecisions",
@@ -96,6 +98,12 @@ export const brainforkConfigSchema = {
             baseUrl: readRequiredString(raw, "baseUrl", "baseUrl"),
             endpoint: readRequiredString(raw, "endpoint", "endpoint"),
             apiKey: readRequiredString(raw, "apiKey", "apiKey"),
+            refreshToken: typeof raw.refreshToken === "string" && raw.refreshToken.trim()
+                ? raw.refreshToken.trim()
+                : undefined,
+            tokenExpiresAt: typeof raw.tokenExpiresAt === "string" && raw.tokenExpiresAt.trim()
+                ? raw.tokenExpiresAt.trim()
+                : undefined,
             autoRecall: readBoolean(raw, "autoRecall", true),
             autoIndex: readBoolean(raw, "autoIndex", true),
             captureDecisions: readBoolean(raw, "captureDecisions", true),
@@ -189,6 +197,8 @@ export const brainforkConfigSchema = {
             baseUrl: { type: "string" },
             endpoint: { type: "string" },
             apiKey: { type: "string" },
+            refreshToken: { type: "string" },
+            tokenExpiresAt: { type: "string" },
             autoRecall: { type: "boolean" },
             autoIndex: { type: "boolean" },
             captureDecisions: { type: "boolean" },

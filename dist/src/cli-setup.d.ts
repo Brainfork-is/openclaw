@@ -10,6 +10,8 @@ export type BrainforkSetupConfig = {
     baseUrl: string;
     endpoint: string;
     apiKey: string;
+    refreshToken?: string;
+    tokenExpiresAt?: string;
 };
 export type BrainforkSetupCommandOptions = {
     brainfork: CommandLike;
