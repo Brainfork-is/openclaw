@@ -128,8 +128,11 @@ function extractServerIdsFromToken(accessToken) {
         return [];
     }
 }
-/** Look up the endpoint slug for a server ID via the Brainfork API */
+/** Look up the endpoint slug for a server ID via the Brainfork API.
+ * Tries /oauth/user-servers first (Firebase token), then falls back to
+ * using the server ID directly as the endpoint slug. */
 async function resolveEndpointFromServerId(baseUrl, accessToken, serverId) {
+    // Try the user-servers endpoint (works with Firebase tokens from web dashboard)
     try {
         const response = await fetch(`${normalizeBaseUrl(baseUrl)}/oauth/user-servers`, {
             headers: {
@@ -137,15 +140,31 @@ async function resolveEndpointFromServerId(baseUrl, accessToken, serverId) {
                 Accept: "application/json",
             },
         });
-        if (!response.ok)
-            return undefined;
-        const data = await response.json();
-        const server = data.servers?.find((s) => s.id === serverId);
-        return server?.endpoint;
+        if (response.ok) {
+            const data = await response.json();
+            const server = data.servers?.find((s) => s.id === serverId);
+            if (server?.endpoint)
+                return server.endpoint;
+        }
     }
     catch {
-        return undefined;
+        // Fall through to next approach
     }
+    // Try using the server ID as the endpoint directly — some setups use the UUID as the endpoint path
+    try {
+        const testResponse = await fetch(`${normalizeBaseUrl(baseUrl)}/${serverId}/health`, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json",
+            },
+        });
+        if (testResponse.ok)
+            return serverId;
+    }
+    catch {
+        // Fall through
+    }
+    return undefined;
 }
 export async function validateManualCredentials(baseUrl, apiKey) {
     const response = await fetch(`${normalizeBaseUrl(baseUrl)}/health`, {
@@ -320,7 +339,7 @@ async function runBrowserOAuthSetup(prompts, configPath) {
     finally {
         await new Promise((resolve) => server.close(() => resolve()));
     }
-    // Try to auto-detect the endpoint: first from JWT claims, then by resolving server_ids via API
+    // Try to auto-detect the endpoint from JWT claims or by resolving server_ids via API
     let endpoint = detectEndpointFromAccessToken(tokens.access_token);
     if (!endpoint) {
         const serverIds = extractServerIdsFromToken(tokens.access_token);
@@ -328,9 +347,14 @@ async function runBrowserOAuthSetup(prompts, configPath) {
             endpoint = await resolveEndpointFromServerId(baseUrl, tokens.access_token, serverIds[0]) ?? undefined;
         }
     }
-    // Only ask the user if we couldn't auto-detect
+    // If we couldn't auto-detect, ask — but explain what we need
     if (!endpoint) {
-        endpoint = (await prompts.ask("Endpoint/server name")).trim();
+        console.log("\nAuthenticated successfully! Now we need your MCP server endpoint slug.");
+        console.log("You can find this in your Brainfork dashboard under Servers → your server name.");
+        endpoint = (await prompts.ask("Endpoint slug (e.g. 'test' or 'my-server')")).trim();
+    }
+    else {
+        console.log(`\n✅ Authenticated! Using endpoint: ${endpoint}`);
     }
     if (!endpoint) {
         throw new Error("Endpoint/server name is required");
