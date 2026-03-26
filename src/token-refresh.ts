@@ -1,8 +1,8 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import os from "node:os";
 import type { PluginLogger } from "openclaw/plugin-sdk";
-import { resolveOpenClawStateDir } from "./env-detect.js";
+import {
+  persistRefreshedCredentials as persistCredentials,
+  type RefreshableCredentialsPatch,
+} from "./config-io.js";
 
 const OAUTH_CLIENT_ID = "openclaw-brainfork-plugin";
 
@@ -89,72 +89,11 @@ export async function refreshAccessToken(
 
 /**
  * Atomically update the stored credentials in the OpenClaw config file.
- * Uses write-to-temp-then-rename for crash safety.
+ * Re-exported from config-io.ts which handles all filesystem I/O.
  */
 export async function persistRefreshedCredentials(
   credentials: RefreshableCredentials,
   configPath?: string,
 ): Promise<void> {
-  const resolvedPath = configPath ?? path.join(resolveOpenClawStateDir(), "openclaw.json");
-
-  let rawConfig: Record<string, unknown> = {};
-  try {
-    const text = await fs.readFile(resolvedPath, "utf8");
-    rawConfig = text.trim() ? (JSON.parse(text) as Record<string, unknown>) : {};
-  } catch (error) {
-    const nodeError = error as NodeJS.ErrnoException;
-    if (nodeError.code !== "ENOENT") {
-      throw error;
-    }
-  }
-
-  // Navigate to plugins.entries.brainfork-openclaw.config
-  const plugins = asRecord(rawConfig.plugins) ?? {};
-  const entries = asRecord(plugins.entries) ?? {};
-  const pluginEntry = asRecord(entries["brainfork-openclaw"]) ?? {};
-  const existingConfig = asRecord(pluginEntry.config) ?? {};
-
-  const updatedConfig = {
-    ...existingConfig,
-    apiKey: credentials.apiKey,
-    ...(credentials.refreshToken ? { refreshToken: credentials.refreshToken } : {}),
-    ...(credentials.tokenExpiresAt ? { tokenExpiresAt: credentials.tokenExpiresAt } : {}),
-  };
-
-  const nextFullConfig = {
-    ...rawConfig,
-    plugins: {
-      ...plugins,
-      entries: {
-        ...entries,
-        "brainfork-openclaw": {
-          ...pluginEntry,
-          config: updatedConfig,
-        },
-      },
-    },
-  };
-
-  // Atomic write: write to temp file in same directory, then rename
-  const dir = path.dirname(resolvedPath);
-  await fs.mkdir(dir, { recursive: true });
-  const tempPath = path.join(dir, `.openclaw.json.${process.pid}.${Date.now()}.tmp`);
-
-  try {
-    await fs.writeFile(tempPath, `${JSON.stringify(nextFullConfig, null, 2)}\n`, "utf8");
-    if (process.platform !== "win32") {
-      await fs.chmod(tempPath, 0o600);
-    }
-    await fs.rename(tempPath, resolvedPath);
-  } catch (error) {
-    // Clean up temp file on failure
-    await fs.unlink(tempPath).catch(() => undefined);
-    throw error;
-  }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
+  return persistCredentials(credentials, configPath);
 }

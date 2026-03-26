@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
@@ -6,6 +5,8 @@ import { promisify } from "node:util";
 import readline from "node:readline/promises";
 import { startOAuthCallbackServer } from "./oauth-callback-server.js";
 import { hasGraphicalSession, resolveOpenClawStateDir } from "./env-detect.js";
+import { writeBrainforkPluginConfig } from "./config-io.js";
+export { writeBrainforkPluginConfig } from "./config-io.js";
 const execFileAsync = promisify(execFile);
 const DEFAULT_BASE_URL = "https://api.brainfork.is";
 /** Generate a PKCE code verifier and S256 challenge locally using Node.js crypto. */
@@ -157,53 +158,6 @@ export async function validateEndpoint(baseUrl, endpoint, apiKey) {
     if (typeof payload.jsonrpc !== "string" || (!payload.result && !payload.error)) {
         throw new Error(`Endpoint '${endpoint}' did not return a valid JSON-RPC response`);
     }
-}
-export async function writeBrainforkPluginConfig(configPath, pluginConfig) {
-    let rawConfig = {};
-    try {
-        const text = await fs.readFile(configPath, "utf8");
-        rawConfig = text.trim() ? JSON.parse(text) : {};
-    }
-    catch (error) {
-        const nodeError = error;
-        if (nodeError.code !== "ENOENT") {
-            throw error;
-        }
-    }
-    const plugins = asRecord(rawConfig.plugins) ?? {};
-    const entries = asRecord(plugins.entries) ?? {};
-    const existingEntry = asRecord(entries["brainfork-openclaw"]) ?? {};
-    const nextConfig = {
-        ...rawConfig,
-        plugins: {
-            ...plugins,
-            entries: {
-                ...entries,
-                "brainfork-openclaw": {
-                    ...existingEntry,
-                    enabled: true,
-                    config: {
-                        ...(asRecord(existingEntry.config) ?? {}),
-                        baseUrl: pluginConfig.baseUrl,
-                        endpoint: pluginConfig.endpoint,
-                        apiKey: pluginConfig.apiKey,
-                        ...(pluginConfig.refreshToken ? { refreshToken: pluginConfig.refreshToken } : {}),
-                        ...(pluginConfig.tokenExpiresAt ? { tokenExpiresAt: pluginConfig.tokenExpiresAt } : {}),
-                    },
-                },
-            },
-        },
-    };
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
-    if (process.platform !== "win32") {
-        await fs.chmod(configPath, 0o600);
-    }
-}
-function asRecord(value) {
-    return value && typeof value === "object" && !Array.isArray(value)
-        ? value
-        : null;
 }
 async function openBrowser(url) {
     // Try the 'open' npm package if available (optional peer dependency).

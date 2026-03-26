@@ -1,4 +1,5 @@
 import type { PluginLogger } from "openclaw/plugin-sdk";
+export { writeBrainforkPluginConfig } from "./config-io.js";
 /** Generate a PKCE code verifier and S256 challenge locally using Node.js crypto. */
 export declare function generatePkceVerifierChallenge(): {
     verifier: string;
@@ -41,6 +42,4 @@ export declare function exchangeOAuthCode(params: {
 export declare function detectEndpointFromAccessToken(accessToken: string): string | undefined;
 export declare function validateManualCredentials(baseUrl: string, apiKey: string): Promise<void>;
 export declare function validateEndpoint(baseUrl: string, endpoint: string, apiKey: string): Promise<void>;
-export declare function writeBrainforkPluginConfig(configPath: string, pluginConfig: BrainforkSetupConfig): Promise<void>;
 export declare function registerBrainforkSetupCommand(options: BrainforkSetupCommandOptions): void;
-export {};
