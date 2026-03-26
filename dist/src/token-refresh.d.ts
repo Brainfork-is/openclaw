@@ -21,7 +21,7 @@ export declare function isTokenExpiredOrExpiring(tokenExpiresAt: string | undefi
 export declare function refreshAccessToken(baseUrl: string, refreshToken: string, fetchImpl?: typeof fetch): Promise<TokenResponse>;
 /**
  * Atomically update the stored credentials in the OpenClaw config file.
- * Uses write-to-temp-then-rename for crash safety.
+ * Re-exported from config-io.ts which handles all filesystem I/O.
  */
 export declare function persistRefreshedCredentials(credentials: RefreshableCredentials, configPath?: string): Promise<void>;
 export {};
