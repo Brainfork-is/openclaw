@@ -44,9 +44,13 @@ function stripInternalMetadata(value) {
         .replace(/```\s*json\s*\{[^}]*"message_id"[^}]*\}\s*```/g, "")
         .replace(/```\s*json\s*\{[^}]*"sender_id"[^}]*\}\s*```/g, "")
         .replace(/```\s*json\s*\{[^}]*"label"[^}]*\}\s*```/g, "")
-        .replace(/\bjson\s*\{\s*"message_id"\s*:[^}]*\}/g, "")
-        .replace(/\bjson\s*\{\s*"label"\s*:[^}]*\}/g, "")
-        .replace(/\bjson\s*\{\s*"sender_id"\s*:[^}]*\}/g, "")
+        .replace(/\bjson\s*\{[^}]*"message_id"[^}]*\}/gs, "")
+        .replace(/\bjson\s*\{[^}]*"label"[^}]*\}/gs, "")
+        .replace(/\bjson\s*\{[^}]*"sender_id"[^}]*\}/gs, "")
+        // Bare JSON blocks with known metadata fields
+        .replace(/\{\s*"(?:message_id|sender_id|sender|timestamp|schema|chat_id|account_id|channel|provider|surface|chat_type|label|id|name)"[^}]*\}/gs, "")
+        // Replied message context blocks
+        .replace(/Replied message \(untrusted[^)]*\):[\s\S]*?```\s*/g, "")
         // System event lines (exec completions, cron triggers)
         .replace(/System:\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*[^\n]*/g, "")
         .replace(/sourceSession=[^\s]*/g, "")
@@ -54,7 +58,8 @@ function stripInternalMetadata(value) {
         .replace(/sourceTool=[^\s]*/g, "")
         .replace(/\[cron:[^\]]*\]/g, "")
         // Internal action markers
-        .replace(/\[\[replytocurrent\]\]/gi, "")
+        .replace(/\[\[reply_?to_?current\]\]/gi, "")
+        .replace(/\[\[reply_?to:?\s*\d*\]\]/gi, "")
         .replace(/\[\[reply\]\]/gi, "")
         .replace(/\s+/g, " ")
         .trim();
@@ -62,14 +67,16 @@ function stripInternalMetadata(value) {
 /** Strip internal metadata from assistant reasoning text */
 function stripReasoningMetadata(value) {
     return value
-        .replace(/\[\[replytocurrent\]\]/gi, "")
+        .replace(/\[\[reply_?to_?current\]\]/gi, "")
+        .replace(/\[\[reply_?to:?\s*\d*\]\]/gi, "")
         .replace(/\[\[reply\]\]/gi, "")
         // Telegram/channel message metadata JSON blocks
         .replace(/```\s*json\s*\{[^}]*"message_id"[^}]*\}\s*```/g, "")
         .replace(/```\s*json\s*\{[^}]*"sender_id"[^}]*\}\s*```/g, "")
         .replace(/```\s*json\s*\{[^}]*"label"[^}]*\}\s*```/g, "")
-        .replace(/\bjson\s*\{\s*"message_id"\s*:[^}]*\}/g, "")
-        .replace(/\bjson\s*\{\s*"label"\s*:[^}]*\}/g, "")
+        .replace(/\bjson\s*\{[^}]*"message_id"[^}]*\}/gs, "")
+        .replace(/\bjson\s*\{[^}]*"label"[^}]*\}/gs, "")
+        .replace(/\{\s*"(?:message_id|sender_id|sender|timestamp|schema|chat_id|account_id|channel|provider|surface|chat_type|label|id|name)"[^}]*\}/gs, "")
         // System event lines
         .replace(/System:\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*[^\n]*/g, "")
         .replace(/\s+/g, " ")

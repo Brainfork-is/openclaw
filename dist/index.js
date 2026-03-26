@@ -209,27 +209,42 @@ function decisionFingerprint(decision) {
         .trim();
     return createHash("sha256").update(normalized).digest("hex");
 }
-/** Recent decision fingerprints to prevent duplicate logging across concurrent sessions */
-const recentDecisionFingerprints = new Map();
-const DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
-function isDuplicateDecision(decision) {
+/** Persistent decision fingerprints to prevent duplicate logging across sessions */
+const DEDUP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const DEDUP_FILE = path.join(os.homedir(), ".openclaw", "memory", "brainfork", "decision-fingerprints.json");
+async function loadFingerprints() {
+    try {
+        const raw = await fs.readFile(DEDUP_FILE, "utf-8");
+        return JSON.parse(raw);
+    }
+    catch {
+        return {};
+    }
+}
+async function saveFingerprints(store) {
+    await fs.mkdir(path.dirname(DEDUP_FILE), { recursive: true });
+    await fs.writeFile(DEDUP_FILE, JSON.stringify(store), "utf-8");
+}
+async function isDuplicateDecision(decision) {
     const fingerprint = decisionFingerprint(decision);
     const now = Date.now();
+    const store = await loadFingerprints();
     // Prune old entries
-    for (const [key, timestamp] of recentDecisionFingerprints) {
+    for (const [key, timestamp] of Object.entries(store)) {
         if (now - timestamp > DEDUP_WINDOW_MS) {
-            recentDecisionFingerprints.delete(key);
+            delete store[key];
         }
     }
-    if (recentDecisionFingerprints.has(fingerprint)) {
+    if (store[fingerprint]) {
         return true;
     }
-    recentDecisionFingerprints.set(fingerprint, now);
+    store[fingerprint] = now;
+    await saveFingerprints(store);
     return false;
 }
 async function logDecisionWithAutoConfirm(client, decision) {
     // Skip duplicates within the dedup window
-    if (isDuplicateDecision(decision)) {
+    if (await isDuplicateDecision(decision)) {
         return { skipped: true, reason: "duplicate" };
     }
     const baseArgs = {

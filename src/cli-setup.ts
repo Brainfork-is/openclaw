@@ -149,6 +149,8 @@ export function detectEndpointFromAccessToken(accessToken: string): string | und
 
   try {
     const payload = JSON.parse(decodeBase64Url(parts[1] ?? "")) as Record<string, unknown>;
+    
+    // Check direct endpoint claims first
     const candidates = [
       payload.endpoint,
       payload.server,
@@ -164,16 +166,44 @@ export function detectEndpointFromAccessToken(accessToken: string): string | und
         return candidate.trim();
       }
     }
-
-    if (typeof payload.aud === "string" && payload.aud.trim() && /^https?:\/\//i.test(payload.aud)) {
-      const url = new URL(payload.aud);
-      return url.pathname.replace(/^\/+/, "") || undefined;
-    }
   } catch {
     return undefined;
   }
 
   return undefined;
+}
+
+/** Extract server_ids from the JWT so we can look up the endpoint name via API */
+function extractServerIdsFromToken(accessToken: string): string[] {
+  try {
+    const parts = accessToken.split(".");
+    if (parts.length < 2) return [];
+    const payload = JSON.parse(decodeBase64Url(parts[1] ?? "")) as Record<string, unknown>;
+    if (Array.isArray(payload.server_ids)) {
+      return payload.server_ids.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+/** Look up the endpoint slug for a server ID via the Brainfork API */
+async function resolveEndpointFromServerId(baseUrl: string, accessToken: string, serverId: string): Promise<string | undefined> {
+  try {
+    const response = await fetch(`${normalizeBaseUrl(baseUrl)}/oauth/user-servers`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    });
+    if (!response.ok) return undefined;
+    const data = await response.json() as { servers?: Array<{ id: string; endpoint: string; name: string }> };
+    const server = data.servers?.find((s) => s.id === serverId);
+    return server?.endpoint;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function validateManualCredentials(baseUrl: string, apiKey: string): Promise<void> {
@@ -333,7 +363,8 @@ async function runManualSetup(prompts: PromptApi, configPath: string): Promise<B
 }
 
 async function runBrowserOAuthSetup(prompts: PromptApi, configPath: string): Promise<BrainforkSetupConfig> {
-  const baseUrl = normalizeBaseUrl(await prompts.ask("Brainfork API URL", DEFAULT_BASE_URL));
+  // Browser flow uses the default API URL — no need to ask
+  const baseUrl = DEFAULT_BASE_URL;
   const { verifier, challenge } = generatePkceVerifierChallenge();
   const state = crypto.randomUUID();
   const { server, port, codePromise } = await startOAuthCallbackServer(state, DEFAULT_TIMEOUT_MS);
@@ -365,8 +396,18 @@ async function runBrowserOAuthSetup(prompts: PromptApi, configPath: string): Pro
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
-  const endpointFromToken = detectEndpointFromAccessToken(tokens.access_token);
-  const endpoint = (endpointFromToken || await prompts.ask("Endpoint/server name")).trim();
+  // Try to auto-detect the endpoint: first from JWT claims, then by resolving server_ids via API
+  let endpoint = detectEndpointFromAccessToken(tokens.access_token);
+  if (!endpoint) {
+    const serverIds = extractServerIdsFromToken(tokens.access_token);
+    if (serverIds.length > 0) {
+      endpoint = await resolveEndpointFromServerId(baseUrl, tokens.access_token, serverIds[0]) ?? undefined;
+    }
+  }
+  // Only ask the user if we couldn't auto-detect
+  if (!endpoint) {
+    endpoint = (await prompts.ask("Endpoint/server name")).trim();
+  }
   if (!endpoint) {
     throw new Error("Endpoint/server name is required");
   }
