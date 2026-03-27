@@ -40,6 +40,8 @@ function buildAuthorizeUrl(baseUrl, redirectUri, state, challenge) {
     url.searchParams.set("code_challenge_method", "S256");
     url.searchParams.set("state", state);
     url.searchParams.set("scope", OAUTH_SCOPE);
+    // Always force consent so the user can select/change their server
+    url.searchParams.set("prompt", "consent");
     return url.toString();
 }
 export async function exchangeOAuthCode(params) {
