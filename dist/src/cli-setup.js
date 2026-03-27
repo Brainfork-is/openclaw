@@ -330,7 +330,12 @@ async function runBrowserOAuthSetup(prompts, configPath) {
     }
     // Only ask the user if we couldn't auto-detect
     if (!endpoint) {
-        endpoint = (await prompts.ask("Endpoint/server name")).trim();
+        console.log("\nAuthenticated successfully! Now we need your MCP server endpoint slug.");
+        console.log("You can find this in your Brainfork dashboard under Servers → your server name.");
+        endpoint = (await prompts.ask("Endpoint slug (e.g. 'test' or 'my-server')")).trim();
+    }
+    else {
+        console.log(`\n✅ Using endpoint: ${endpoint}`);
     }
     if (!endpoint) {
         throw new Error("Endpoint/server name is required");
