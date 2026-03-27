@@ -227,14 +227,18 @@ export async function validateManualCredentials(baseUrl: string, apiKey: string)
 }
 
 export async function validateEndpoint(baseUrl: string, endpoint: string, apiKey: string): Promise<void> {
-  const url = `${normalizeBaseUrl(baseUrl)}/${endpoint}/mcp`;
+  const url = `${normalizeBaseUrl(baseUrl)}/${endpoint}`;
+  // OAuth JWTs (eyJ...) must use Bearer prefix; explicit prefixes are passed through unchanged
+  const authHeader = apiKey.startsWith("Bearer ") || apiKey.startsWith("ApiKey ")
+    ? apiKey
+    : apiKey.startsWith("eyJ")
+      ? `Bearer ${apiKey}`
+      : `ApiKey ${apiKey}`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: apiKey.startsWith("Bearer ") || apiKey.startsWith("ApiKey ")
-        ? apiKey
-        : `ApiKey ${apiKey}`,
+      Authorization: authHeader,
     },
     body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 1 }),
     signal: AbortSignal.timeout(15_000),
