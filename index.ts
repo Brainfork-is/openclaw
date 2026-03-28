@@ -6,6 +6,7 @@ import { brainforkConfigSchema, type BrainforkPluginConfig } from "./src/config.
 import { detectDurableDecisions } from "./src/decision-capture.js";
 import { isDuplicateDecision } from "./src/decision-dedup.js";
 import { registerBrainforkSetupCommand } from "./src/cli-setup.js";
+import { resolveOpenClawConfigPath } from "./src/env-detect.js";
 import { BrainforkMcpClient } from "./src/mcp-client.js";
 import {
   applyRemovedResult,
@@ -470,7 +471,8 @@ const brainforkPlugin = {
     }
 
     const config = brainforkConfigSchema.parse(api.pluginConfig);
-    const client = new BrainforkMcpClient(config, api.logger);
+    const configPath = resolveOpenClawConfigPath();
+    const client = new BrainforkMcpClient(config, api.logger, globalThis.fetch, configPath);
 
     api.registerTool(
       {

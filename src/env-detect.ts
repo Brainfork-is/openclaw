@@ -19,3 +19,7 @@ export function hasGraphicalSession(): boolean {
 export function resolveOpenClawStateDir(): string {
   return process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
 }
+
+export function resolveOpenClawConfigPath(): string {
+  return path.join(resolveOpenClawStateDir(), "openclaw.json");
+}

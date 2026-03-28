@@ -16,4 +16,7 @@ export function hasGraphicalSession() {
 export function resolveOpenClawStateDir() {
     return process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
 }
+export function resolveOpenClawConfigPath() {
+    return path.join(resolveOpenClawStateDir(), "openclaw.json");
+}
 //# sourceMappingURL=env-detect.js.map
