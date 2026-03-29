@@ -149,21 +149,15 @@ async function resolveEndpointFromServerId(baseUrl, accessToken, serverId) {
         return undefined;
     }
 }
+/**
+ * @deprecated Use validateEndpoint instead — /health requires no auth so this
+ * check always passes on a reachable server regardless of credential validity.
+ * Kept temporarily for backward compatibility but marked for removal.
+ */
 export async function validateManualCredentials(baseUrl, apiKey) {
-    const response = await fetch(`${normalizeBaseUrl(baseUrl)}/health`, {
-        method: "GET",
-        headers: {
-            Authorization: apiKey.startsWith("Bearer ") || apiKey.startsWith("ApiKey ")
-                ? apiKey
-                : `ApiKey ${apiKey}`,
-            Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
-        },
-        signal: AbortSignal.timeout(15_000),
-    });
-    if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        throw new Error(`Validation failed (${response.status}): ${body || response.statusText}`);
-    }
+    // TASK-131: This function is intentionally a no-op now.
+    // Credential validation happens in validateEndpoint which actually tests auth.
+    // Keeping the export to avoid breaking any external callers.
 }
 export async function validateEndpoint(baseUrl, endpoint, apiKey) {
     const url = `${normalizeBaseUrl(baseUrl)}/${endpoint}`;
@@ -282,11 +276,12 @@ async function runManualSetup(prompts, configPath) {
     if (!apiKey) {
         throw new Error("API key is required");
     }
-    await validateManualCredentials(baseUrl, apiKey);
     const endpoint = (await prompts.ask("Endpoint/server name")).trim();
     if (!endpoint) {
         throw new Error("Endpoint/server name is required");
     }
+    // TASK-131: Validate credentials by testing the actual MCP endpoint (requires auth).
+    // Previously we checked /health which requires no auth, so any credential passed.
     await validateEndpoint(baseUrl, endpoint, apiKey);
     const nextConfig = { baseUrl, endpoint, apiKey };
     await writeBrainforkPluginConfig(configPath, nextConfig);

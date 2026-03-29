@@ -68,21 +68,22 @@ describe("cli setup helpers", () => {
     });
   });
 
-  it("validates manual credentials with a health request", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("ok", { status: 200 }),
+  it("validateManualCredentials is a no-op (deprecated, TASK-131)", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    // Should resolve without calling fetch — function is deprecated
+    await expect(validateManualCredentials("https://api.brainfork.is", "bfk_123")).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("validateEndpoint rejects invalid credentials with 401", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("Unauthorized", { status: 401, statusText: "Unauthorized" }),
     );
 
-    await expect(validateManualCredentials("https://api.brainfork.is", "bfk_123")).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.brainfork.is/health",
-      expect.objectContaining({
-        method: "GET",
-        headers: expect.objectContaining({
-          Authorization: "ApiKey bfk_123",
-        }),
-      }),
-    );
+    await expect(
+      validateEndpoint("https://api.brainfork.is", "my-workspace", "bad-key"),
+    ).rejects.toThrow("Endpoint 'my-workspace' is not accessible (401)");
   });
 
   it("validateEndpoint throws when the server returns a non-OK status", async () => {

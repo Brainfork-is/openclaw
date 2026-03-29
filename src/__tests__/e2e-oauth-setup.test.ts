@@ -42,6 +42,7 @@ import { generatePkceVerifierChallenge } from "openclaw/plugin-sdk";
 import {
   exchangeOAuthCode,
   detectEndpointFromAccessToken,
+  validateEndpoint,
   validateManualCredentials,
   writeBrainforkPluginConfig,
 } from "../cli-setup.js";
@@ -79,6 +80,7 @@ type MockOAuthServerOptions = {
   failTokenExchange?: boolean;
   failRefresh?: boolean;
   failHealth?: boolean;
+  failEndpoint?: boolean;
 };
 
 function startMockOAuthServer(opts: MockOAuthServerOptions = {}): Promise<{ server: http.Server; port: number; url: string }> {
@@ -163,6 +165,19 @@ function startMockOAuthServer(opts: MockOAuthServerOptions = {}): Promise<{ serv
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "unsupported_grant_type" }));
         });
+        return;
+      }
+
+      // MCP endpoint (used by validateEndpoint — TASK-131)
+      if (url.pathname.startsWith("/") && req.method === "POST" && url.pathname !== "/oauth/token") {
+        const authHeader = req.headers.authorization ?? "";
+        if (opts.failEndpoint || !authHeader) {
+          res.writeHead(401, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", result: { tools: [] }, id: 1 }));
         return;
       }
 
@@ -311,43 +326,50 @@ describe("E2E: Browser OAuth flow", () => {
 });
 
 describe("E2E: Manual credentials flow", () => {
-  it("validates credentials against health endpoint and writes config", async () => {
+  it("validates credentials via MCP endpoint (not /health) and writes config", async () => {
     const tempDir = await makeTempDir();
     const configPath = path.join(tempDir, "openclaw.json");
     const mock = await startMockOAuthServer();
 
-    // 1. Validate credentials (real function hits mock health endpoint)
+    // TASK-131: Validate via authenticated MCP endpoint, not unauthenticated /health
     await expect(
-      validateManualCredentials(mock.url, "bf_mem_sk_test_key_123"),
+      validateEndpoint(mock.url, "test-workspace", "bf_mem_sk_test_key_123"),
     ).resolves.toBeUndefined();
 
-    // 2. Write config
+    // Write config
     await writeBrainforkPluginConfig(configPath, {
       baseUrl: mock.url,
-      endpoint: "my-server",
+      endpoint: "test-workspace",
       apiKey: "bf_mem_sk_test_key_123",
     });
 
-    // 3. Verify
+    // Verify
     const configText = await fs.readFile(configPath, "utf8");
     const config = JSON.parse(configText);
     expect(config.plugins.entries["brainfork-openclaw"].config.apiKey).toBe("bf_mem_sk_test_key_123");
-    expect(config.plugins.entries["brainfork-openclaw"].config.endpoint).toBe("my-server");
+    expect(config.plugins.entries["brainfork-openclaw"].config.endpoint).toBe("test-workspace");
   });
 
-  it("rejects invalid credentials (health endpoint returns 401)", async () => {
-    const mock = await startMockOAuthServer({ failHealth: true });
+  it("rejects invalid credentials (MCP endpoint returns 401)", async () => {
+    const mock = await startMockOAuthServer({ failEndpoint: true });
 
     await expect(
-      validateManualCredentials(mock.url, "bad-key"),
-    ).rejects.toThrow(/Validation failed.*401/);
+      validateEndpoint(mock.url, "test-workspace", "bad-key"),
+    ).rejects.toThrow(/not accessible.*401/);
   });
 
   it("handles connection refused gracefully", async () => {
     // Port 1 is almost certainly not listening
     await expect(
-      validateManualCredentials("http://127.0.0.1:1", "some-key"),
+      validateEndpoint("http://127.0.0.1:1", "test-workspace", "some-key"),
     ).rejects.toThrow();
+  });
+
+  it("validateManualCredentials is deprecated no-op (TASK-131)", async () => {
+    // Should resolve immediately without network calls
+    await expect(
+      validateManualCredentials("http://127.0.0.1:1", "any-key"),
+    ).resolves.toBeUndefined();
   });
 });
 
