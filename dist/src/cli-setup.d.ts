@@ -40,6 +40,11 @@ export declare function exchangeOAuthCode(params: {
     verifier: string;
 }): Promise<TokenResponse>;
 export declare function detectEndpointFromAccessToken(accessToken: string): string | undefined;
+/**
+ * @deprecated Use validateEndpoint instead — /health requires no auth so this
+ * check always passes on a reachable server regardless of credential validity.
+ * Kept temporarily for backward compatibility but marked for removal.
+ */
 export declare function validateManualCredentials(baseUrl: string, apiKey: string): Promise<void>;
 export declare function validateEndpoint(baseUrl: string, endpoint: string, apiKey: string): Promise<void>;
 export declare function registerBrainforkSetupCommand(options: BrainforkSetupCommandOptions): void;
