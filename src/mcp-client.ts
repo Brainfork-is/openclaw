@@ -197,12 +197,13 @@ export class BrainforkMcpClient {
     remoteId?: string;
     mode: Exclude<DeleteMode, "ignore">;
   }): Promise<{ toolName: string; response: ParsedToolCallResponse }> {
-    const toolName = params.mode === "delete" ? "delete_document" : "archive_document";
+    // Backend only has archive_document with an optional mode parameter
+    const toolName = "archive_document";
     return {
       toolName,
       response: await this.callToolParsed(toolName, {
         externalId: params.externalId,
-        ...(params.mode === "archive" ? { mode: params.mode } : {}),
+        mode: params.mode,
       }),
     };
   }

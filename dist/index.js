@@ -5,6 +5,7 @@ import { brainforkConfigSchema } from "./src/config.js";
 import { detectDurableDecisions } from "./src/decision-capture.js";
 import { isDuplicateDecision } from "./src/decision-dedup.js";
 import { registerBrainforkSetupCommand } from "./src/cli-setup.js";
+import { resolveOpenClawConfigPath } from "./src/env-detect.js";
 import { BrainforkMcpClient } from "./src/mcp-client.js";
 import { applyRemovedResult, applyUpsertResult, buildSyncPlan, loadServerState, saveServerState, summarizeSyncState, } from "./src/sync-state.js";
 import { collectWorkspaceDocuments, hashContent, resolveWorkspaceDir, } from "./src/workspace-memory.js";
@@ -355,7 +356,8 @@ const brainforkPlugin = {
             return;
         }
         const config = brainforkConfigSchema.parse(api.pluginConfig);
-        const client = new BrainforkMcpClient(config, api.logger);
+        const configPath = resolveOpenClawConfigPath();
+        const client = new BrainforkMcpClient(config, api.logger, globalThis.fetch, configPath);
         api.registerTool({
             name: "brainfork_search",
             label: "Brainfork Search",

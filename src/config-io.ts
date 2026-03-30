@@ -65,14 +65,27 @@ export async function writeBrainforkPluginConfig(
         "brainfork-openclaw": {
           ...existingEntry,
           enabled: true,
-          config: {
-            ...(asRecord(existingEntry.config) ?? {}),
-            baseUrl: pluginConfig.baseUrl,
-            endpoint: pluginConfig.endpoint,
-            apiKey: pluginConfig.apiKey,
-            ...(pluginConfig.refreshToken ? { refreshToken: pluginConfig.refreshToken } : {}),
-            ...(pluginConfig.tokenExpiresAt ? { tokenExpiresAt: pluginConfig.tokenExpiresAt } : {}),
-          },
+          config: (() => {
+            const existing = asRecord(existingEntry.config) ?? {};
+            const merged: Record<string, unknown> = {
+              ...existing,
+              baseUrl: pluginConfig.baseUrl,
+              endpoint: pluginConfig.endpoint,
+              apiKey: pluginConfig.apiKey,
+            };
+            // Explicitly set or remove OAuth refresh fields to prevent stale metadata
+            if (pluginConfig.refreshToken) {
+              merged.refreshToken = pluginConfig.refreshToken;
+            } else {
+              delete merged.refreshToken;
+            }
+            if (pluginConfig.tokenExpiresAt) {
+              merged.tokenExpiresAt = pluginConfig.tokenExpiresAt;
+            } else {
+              delete merged.tokenExpiresAt;
+            }
+            return merged;
+          })(),
         },
       },
     },

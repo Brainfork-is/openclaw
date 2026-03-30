@@ -106,6 +106,18 @@
         "type": "integer",
         "minimum": 1000,
         "maximum": 120000
+      },
+      "accessToken": {
+        "type": "string"
+      },
+      "refreshToken": {
+        "type": "string"
+      },
+      "tokenExpiresAt": {
+        "type": "string"
+      },
+      "oauthClientId": {
+        "type": "string"
       }
     },
     "required": []
