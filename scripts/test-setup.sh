@@ -50,24 +50,49 @@ section "Mock Server"
 # Find a free port
 MOCK_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('',0)); print(s.getsockname()[1]); s.close()")
 
-# Simple mock: responds to /health and basic MCP tool calls
+# Mock server that matches the real backend route shape:
+#   - POST /:endpoint (MCP JSON-RPC) — requires Bearer-only auth
+#   - GET /health — unauthenticated (real backend has no auth on /health)
+# The mock validates that auth uses "Bearer" or "ApiKey" prefix, matching
+# the real backend which accepts both for API-key auth and Bearer for JWT/OAuth.
 cat > "$TEST_HOME/mock-server.mjs" << 'MOCK_EOF'
 import http from "node:http";
 
 const port = parseInt(process.argv[2] || "0", 10);
+const VALID_API_KEY = "test-api-key-for-harness";
+
+function checkAuth(req) {
+  const auth = req.headers["authorization"] || "";
+  // Accept "ApiKey <key>" or "Bearer <key>" — reject missing/malformed auth
+  if (auth.startsWith("ApiKey ")) {
+    return auth.slice(7) === VALID_API_KEY;
+  }
+  if (auth.startsWith("Bearer ")) {
+    return auth.slice(7) === VALID_API_KEY;
+  }
+  return false;
+}
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
 
-  // Health endpoint
+  // Health endpoint — no auth (matches real backend)
   if (url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok", server: "mock-brainfork" }));
     return;
   }
 
-  // MCP endpoint - handle tool calls
-  if (url.pathname.endsWith("/mcp") || url.pathname.endsWith("/sse")) {
+  // MCP endpoint at /:endpoint (matches real backend: router.all('/:endpoint', ...))
+  // Only accepts POST, requires auth
+  const endpointMatch = url.pathname.match(/^\/([a-zA-Z0-9_-]+)$/);
+  if (endpointMatch && req.method === "POST") {
+    if (!checkAuth(req)) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+
     let body = "";
     req.on("data", (chunk) => { body += chunk; });
     req.on("end", () => {
