@@ -28,6 +28,9 @@ jobs:
       - name: Unit tests
         run: npx vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts
 
+      - name: Integration harness tests
+        run: npx vitest run --config ./vitest.config.ts ./src/__tests__/integration-harness.test.ts
+
       - name: Static checks (scanner + manifest + package)
         run: |
           TMPDIR=$(mktemp -d)
