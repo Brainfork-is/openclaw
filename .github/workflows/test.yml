@@ -28,6 +28,15 @@ jobs:
       - name: Unit tests
         run: npx vitest run --config ./vitest.config.ts ./index.test.ts ./src/__tests__/*.test.ts
 
+      - name: Lock-file consistency
+        run: |
+          PKG_VER=$(node -p "require('./package.json').version")
+          LOCK_VER=$(node -p "require('./package-lock.json').version")
+          if [ "$PKG_VER" != "$LOCK_VER" ]; then
+            echo "::error::package-lock.json version ($LOCK_VER) does not match package.json version ($PKG_VER) — run npm install and commit"
+            exit 1
+          fi
+
       - name: Static checks (scanner + manifest + package)
         run: |
           TMPDIR=$(mktemp -d)
