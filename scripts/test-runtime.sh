@@ -59,6 +59,134 @@ const pushLog = [];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
 
+  // GET /health — unauthenticated (matches real backend)
+  if (url.pathname === "/health" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok" }));
+    return;
+  }
+
+  // Test-only endpoint to inspect push_document calls
+  if (url.pathname === "/_test/push-log") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(pushLog));
+    return;
+  }
+
+  // MCP endpoint — POST /:endpoint (matches real backend route shape)
+  const endpointMatch = url.pathname.match(/^\/([^/]+)$/);
+  if (endpointMatch && req.method === "POST") {
+    // Validate auth — real backend requires Bearer (JWT) or ApiKey
+    const auth = req.headers.authorization || "";
+    if (!auth.startsWith("Bearer ") && !auth.startsWith("ApiKey ")) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Missing or invalid authorization" }));
+      return;
+    }
+
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      let parsed;
+      try { parsed = JSON.parse(body); } catch { parsed = {}; }
+
+      // Handle initialize
+      if (parsed.method === "initialize") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          jsonrpc: "2.0", id: parsed.id,
+          result: {
+            protocolVersion: "2025-06-18",
+            capabilities: { tools: {} },
+            serverInfo: { name: "mock-brainfork", version: "1.0.0" },
+          },
+        }));
+        return;
+      }
+
+      // Handle notifications/initialized
+      if (parsed.method === "notifications/initialized") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: parsed.id, result: {} }));
+        return;
+      }
+
+      if (parsed.method === "tools/list") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          jsonrpc: "2.0", id: parsed.id,
+          result: {
+            tools: [
+              { name: "search", description: "Search" },
+              { name: "push_document", description: "Push" },
+              { name: "query", description: "Query" },
+              { name: "vsearch", description: "VSearch" },
+              { name: "log_decision", description: "Log decision" },
+              { name: "fetch", description: "Fetch" },
+            ]
+          }
+        }));
+        return;
+      }
+
+      if (parsed.method === "tools/call") {
+        const toolName = parsed.params?.name;
+        const args = parsed.params?.arguments || {};
+        
+        if (toolName === "push_document") {
+          pushLog.push({ externalId: args.externalId, title: args.title, ts: Date.now() });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            jsonrpc: "2.0", id: parsed.id,
+            result: {
+              content: [{ type: "text", text: JSON.stringify({
+                id: `doc-${pushLog.length}`,
+                title: args.title || args.externalId,
+                url: `https://mock/${args.externalId}`
+              }) }]
+            }
+          }));
+          return;
+        }
+
+        // Default tool response
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          jsonrpc: "2.0", id: parsed.id,
+          result: { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] }
+        }));
+        return;
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: parsed.id, result: {} }));
+    });
+    return;
+  }
+
+  // Reject non-POST to endpoint paths
+  if (endpointMatch && req.method !== "POST") {
+    res.writeHead(405, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Method not allowed" }));
+    return;
+  }
+
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("Not found");
+});
+
+server.listen(port, "127.0.0.1", () => {
+  console.log(`Mock MCP server on port ${port}`);
+});
+MOCK_EOF
+import http from "node:http";
+
+const port = parseInt(process.argv[2] || "0", 10);
+const pushLog = [];
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, `http://localhost:${port}`);
+
   if (url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok" }));

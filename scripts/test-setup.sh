@@ -66,13 +66,43 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // MCP endpoint - handle tool calls
-  if (url.pathname.endsWith("/mcp") || url.pathname.endsWith("/sse")) {
+  // MCP endpoint — POST /:endpoint (matches real backend route shape)
+  const endpointMatch = url.pathname.match(/^\/([^/]+)$/);
+  if (endpointMatch && req.method === "POST") {
+    // Validate auth — real backend requires Bearer (JWT) or ApiKey
+    const auth = req.headers.authorization || "";
+    if (!auth.startsWith("Bearer ") && !auth.startsWith("ApiKey ")) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Missing or invalid authorization" }));
+      return;
+    }
+
     let body = "";
     req.on("data", (chunk) => { body += chunk; });
     req.on("end", () => {
       let parsed;
       try { parsed = JSON.parse(body); } catch { parsed = {}; }
+
+      // Handle initialize
+      if (parsed.method === "initialize") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          jsonrpc: "2.0", id: parsed.id,
+          result: {
+            protocolVersion: "2025-06-18",
+            capabilities: { tools: {} },
+            serverInfo: { name: "mock-brainfork", version: "1.0.0" },
+          },
+        }));
+        return;
+      }
+
+      // Handle notifications/initialized
+      if (parsed.method === "notifications/initialized") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: parsed.id, result: {} }));
+        return;
+      }
 
       // Handle tools/list
       if (parsed.method === "tools/list") {
